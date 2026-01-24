@@ -16,10 +16,11 @@ class Settings(BaseSettings):
     debug: bool = False
     
     # Paths
-    base_dir: Path = Path(__file__).parent
+    import sys
+    base_dir: Path = Path(sys.executable).parent if getattr(sys, 'frozen', False) else Path(__file__).parent
     upload_dir: Path = base_dir / "uploads"
     download_dir: Path = base_dir / "downloads"
-    database_url: str = "sqlite:///./transcripts.db"
+    database_url: str = f"sqlite:///{base_dir / 'transcripts.db'}"
     
     # FFmpeg auto-detection with fallback
     ffmpeg_path: str = os.getenv(

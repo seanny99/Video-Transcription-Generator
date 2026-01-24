@@ -54,6 +54,15 @@
                 "dmg"
             ],
             "icon": "assets/icon.icns"
-        }
+        },
+        "extraResources": [
+            {
+                "from": "../backend/dist",
+                "to": "backend",
+                "filter": [
+                    "backend.exe"
+                ]
+            }
+        ]
     }
 }

@@ -57,11 +57,11 @@ function startBackend(): void {
         return;
     }
 
-    // In production, start the Python backend
+    // In production, start the Python backend executable
     const backendPath = path.join(process.resourcesPath, 'backend');
-    const pythonPath = path.join(backendPath, 'venv', 'Scripts', 'python.exe');
+    const exePath = path.join(backendPath, 'backend.exe');
 
-    backendProcess = spawn(pythonPath, ['-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', '8081'], {
+    backendProcess = spawn(exePath, [], {
         cwd: backendPath,
         env: { ...process.env, PYTHONUNBUFFERED: '1' },
     });
