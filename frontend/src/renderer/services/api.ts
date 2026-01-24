@@ -1,6 +1,12 @@
 import { MediaData, TranscriptData, YouTubeInfo, TranscriptionStatus, ApiError } from '../types';
 
-const API_BASE = 'http://127.0.0.1:8081/api';
+const getApiBase = () => {
+    const params = new URLSearchParams(window.location.search);
+    const port = params.get('port') || '8081';
+    return `http://127.0.0.1:${port}/api`;
+};
+
+const API_BASE = getApiBase();
 
 class ApiClient {
     private baseUrl: string;

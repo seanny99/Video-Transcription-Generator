@@ -6,11 +6,26 @@
 import { app, BrowserWindow, shell } from 'electron';
 import * as path from 'path';
 import { spawn, ChildProcess } from 'child_process';
+import * as net from 'net';
 
 let mainWindow: BrowserWindow | null = null;
 let backendProcess: ChildProcess | null = null;
+let backendPort = 8081;
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+
+async function findPort(startPort: number): Promise<number> {
+    return new Promise((resolve) => {
+        const server = net.createServer();
+        server.listen(startPort, '127.0.0.1', () => {
+            const { port } = server.address() as net.AddressInfo;
+            server.close(() => resolve(port));
+        });
+        server.on('error', () => {
+            resolve(findPort(startPort + 1));
+        });
+    });
+}
 
 function createWindow(): void {
     mainWindow = new BrowserWindow({
@@ -31,7 +46,9 @@ function createWindow(): void {
         mainWindow.loadURL('http://localhost:3000');
         mainWindow.webContents.openDevTools();
     } else {
-        mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+        mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'), {
+            query: { port: backendPort.toString() }
+        });
     }
 
     // Show window when ready
@@ -63,7 +80,11 @@ function startBackend(): void {
 
     backendProcess = spawn(exePath, [], {
         cwd: backendPath,
-        env: { ...process.env, PYTHONUNBUFFERED: '1' },
+        env: {
+            ...process.env,
+            PYTHONUNBUFFERED: '1',
+            PORT: backendPort.toString()
+        },
     });
 
     backendProcess.stdout?.on('data', (data) => {
@@ -87,7 +108,10 @@ function stopBackend(): void {
 }
 
 // App lifecycle
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+    if (!isDev) {
+        backendPort = await findPort(8081);
+    }
     startBackend();
     createWindow();
 

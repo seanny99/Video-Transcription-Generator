@@ -64,7 +64,7 @@ class AudioChunker:
         try:
             result = subprocess.run(
                 [
-                    "ffprobe",
+                    settings.ffprobe_path,
                     "-v", "error",
                     "-show_entries", "format=duration",
                     "-of", "default=noprint_wrappers=1:nokey=1",
@@ -130,7 +130,7 @@ class AudioChunker:
             try:
                 subprocess.run(
                     [
-                        "ffmpeg",
+                        settings.ffmpeg_path,
                         "-y",  # Overwrite output
                         "-i", file_path,
                         "-ss", str(current_time),

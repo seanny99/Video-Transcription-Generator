@@ -4,6 +4,26 @@ All notable changes to the **Video Transcription Generator** are documented here
 
 ---
 
+## [4.2.0] - 2026-01-24
+
+### 🛡️ Universal Production Hardening
+- **Added** Dynamic Port Discovery: The app now automatically finds an available port if `8081` is busy, ensuring it starts correctly on every computer.
+- **Added** Database Schema Versioning: Implemented a version tracking system to support seamless automated migrations in future updates.
+- **Added** Auto-Legacy Migration: Added logic to automatically move development databases to the new persistent `%APPDATA%` location.
+- **Improved** Cross-Platform Pathing: Standardized application data resolution to work robustly across different user environments.
+
+---
+
+## [4.1.0] - 2026-01-24
+
+### ⚙️ Production Hardening
+- **Added** Persistent Data Storage: Migrated all user data (DB, Uploads, Downloads) to `%APPDATA%` in production, ensuring the app works even if installed in protected folders like `Program Files`.
+- **Added** Startup Port Validation: The backend now checks for port availability on `8081` and provides a clear error message instead of failing silently.
+- **Improved** External Tool Reliability: Standardized FFmpeg and ffprobe invocation to use absolute paths, fixing a bug where audio chunking could fail if tools weren't in the global system `PATH`.
+- **Changed** Default Host: Switched backend binding to `127.0.0.1` instead of `0.0.0.0` for improved local security.
+
+---
+
 ## [4.0.0] - 2026-01-24
 
 ### ✨ User Experience & Interface

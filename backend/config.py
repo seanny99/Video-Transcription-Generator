@@ -8,6 +8,19 @@ from pathlib import Path
 from pydantic_settings import BaseSettings
 
 
+import sys
+import shutil
+
+def get_app_data_dir() -> Path:
+    """Get persistent application data directory."""
+    if getattr(sys, 'frozen', False):
+        # Production: %APPDATA%/VideoTranscriptionGenerator
+        app_data = Path(os.getenv('APPDATA', os.path.expanduser('~'))) / "VideoTranscriptionGenerator"
+        app_data.mkdir(parents=True, exist_ok=True)
+        return app_data
+    # Development: Project root
+    return Path(__file__).parent
+
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
     
@@ -16,24 +29,25 @@ class Settings(BaseSettings):
     debug: bool = False
     
     # Paths
-    import sys
-    base_dir: Path = Path(sys.executable).parent if getattr(sys, 'frozen', False) else Path(__file__).parent
+    base_dir: Path = get_app_data_dir()
     upload_dir: Path = base_dir / "uploads"
     download_dir: Path = base_dir / "downloads"
     database_url: str = f"sqlite:///{base_dir / 'transcripts.db'}"
     
     # FFmpeg auto-detection with fallback
-    ffmpeg_path: str = os.getenv(
+    # We'll use shutil.which for clean detection in production
+    ffmpeg_path: str = shutil.which("ffmpeg") or os.getenv(
         "FFMPEG_PATH", 
         r"C:\Users\seany\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.0.1-full_build\bin\ffmpeg.exe"
     )
+    
+    ffprobe_path: str = shutil.which("ffprobe") or ffmpeg_path.replace("ffmpeg.exe", "ffprobe.exe") if ffmpeg_path else "ffprobe"
 
     # Transcription (faster-whisper)
-    # Using distil-large-v3 for 6x faster inference on CPU (ideal for AMD/Non-CUDA setups)
-    whisper_model: str = "distil-large-v3"  # Options: tiny, base, small, medium, large-v3, distil-large-v3
+    whisper_model: str = "distil-large-v3"
     
     # Server
-    host: str = "0.0.0.0"
+    host: str = "127.0.0.1" # Standardized to localhost for safety
     port: int = 8081
     cors_origins: list[str] = ["*"]
     
@@ -52,17 +66,9 @@ settings = Settings()
 settings.upload_dir.mkdir(parents=True, exist_ok=True)
 settings.download_dir.mkdir(parents=True, exist_ok=True)
 
-# Add FFmpeg to PATH for faster-whisper and other tools
-import shutil
-detected_ffmpeg = shutil.which("ffmpeg")
-if detected_ffmpeg:
-    ffmpeg_dir = str(Path(detected_ffmpeg).parent)
-elif Path(settings.ffmpeg_path).exists():
+# Add FFmpeg to PATH for faster-whisper and other engines
+if settings.ffmpeg_path:
     ffmpeg_dir = str(Path(settings.ffmpeg_path).parent)
-else:
-    ffmpeg_dir = None
-    print("WARNING: FFmpeg not found in PATH or at specified location.")
-
-if ffmpeg_dir and ffmpeg_dir not in os.environ["PATH"]:
-    os.environ["PATH"] += os.pathsep + ffmpeg_dir
+    if ffmpeg_dir not in os.environ["PATH"]:
+        os.environ["PATH"] += os.pathsep + ffmpeg_dir
 

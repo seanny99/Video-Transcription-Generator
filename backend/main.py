@@ -333,7 +333,41 @@ async def health_check():
     }
 
 
+def find_available_port(host: str, start_port: int, max_attempts: int = 10) -> int:
+    """Find the first available port starting from start_port."""
+    import socket
+    for port in range(start_port, start_port + max_attempts):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind((host, port))
+                return port
+            except socket.error:
+                continue
+    return -1
+
+
 if __name__ == "__main__":
     import uvicorn
+    import sys
+    
+    # Try to find an available port starting from settings.port
+    final_port = find_available_port(settings.host, settings.port)
+    
+    if final_port == -1:
+        logger.critical(f"FATAL: Could not find any available ports starting from {settings.port}.")
+        sys.exit(1)
+    
+    # Update settings with the final port
+    settings.port = final_port
+    
+    # Write the selected port to a discovery file for the frontend
+    port_file = settings.base_dir / "backend_port.txt"
+    try:
+        port_file.write_text(str(final_port))
+        logger.info(f"Port discovery file created at {port_file}: {final_port}")
+    except Exception as e:
+        logger.error(f"Failed to create port discovery file: {e}")
+
+    logger.info(f"Starting server on {settings.host}:{settings.port}")
     uvicorn.run(app, host=settings.host, port=settings.port)
 

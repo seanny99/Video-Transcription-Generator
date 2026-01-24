@@ -85,6 +85,9 @@ The application follows an **Asynchronous Architecture** to handle long-running 
 ```
 
 ## Key Configuration Details
+- **Production Persistence**: In packaged mode, the app uses `%APPDATA%/VideoTranscriptionGenerator` for all database, upload, and download storage to avoid write-permission issues in system directories.
+- **Tool Path Standardization**: Dynamically detects and verifies FFmpeg/ffprobe paths, ensuring consistent subprocess execution across different user environments.
+- **Port Resilience**: Implements an explicit port check at startup to prevent silent failures caused by port conflicts on `8081`.
 - **Hardware Awareness**: FFmpeg and Whisper paths are managed dynamically. On Windows, the app audits `winget` and standard NVIDIA paths to ensure tools are found without user configuration.
 - **Security Logic**: Content Security Policy (CSP) is configured to allow `ws:` for Vite HMR and `stream:` for local media playback.
 - **Responsive Navigation**: The main container is fluid, adapting to resolutions from 720p to 4K. The `HistorySidebar` is a fixed-rail overlay that pops out to save screen real estate.
