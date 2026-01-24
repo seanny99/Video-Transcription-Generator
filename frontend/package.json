@@ -2,6 +2,11 @@
     "name": "video-transcription-generator",
     "version": "1.0.0",
     "description": "Video/Audio transcription app with YouTube support",
+    "author": "seanny99",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/seanny99/Video-Transcription-Generator.git"
+    },
     "main": "dist/main/index.js",
     "scripts": {
         "dev": "concurrently \"npm run dev:main\" \"npm run dev:renderer\"",
