@@ -10,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import get_db, MediaFile, MediaSource, Transcript
 from models.transcript import TranscriptionStatus
-from services.youtube_service import YouTubeService, InvalidURLError, DownloadError
+from services.youtube_service import YouTubeService
+from utils.exceptions import ValidationError, ProcessingError
 from engine.job_queue import enqueue_transcription
 
 logger = logging.getLogger(__name__)
@@ -41,10 +42,11 @@ async def get_video_info(request: YouTubeInfoRequest):
     try:
         info = youtube_service.get_video_info(request.url)
         return info
-    except InvalidURLError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except DownloadError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        # AppError will be handled by global handler
+        if "Invalid" in str(e):
+             raise ValidationError(str(e))
+        raise ProcessingError(str(e))
 
 
 @router.post("/download")
@@ -63,9 +65,6 @@ async def download_youtube_video(
         logger.info(f"Downloading video: {request.url}")
         result = youtube_service.download_video(request.url, extract_audio=False)
         
-        # Get video info for title
-        info = youtube_service.get_video_info(request.url)
-        
         # Create media record
         media = MediaFile(
             filename=result['filename'],
@@ -74,7 +73,7 @@ async def download_youtube_video(
             media_type=result['media_type'],
             source=MediaSource.YOUTUBE,
             source_url=request.url,
-            title=info.get('title'),
+            title=result.get('title'),
         )
         db.add(media)
         await db.flush()
@@ -114,10 +113,9 @@ async def download_youtube_video(
             "message": "Video downloaded successfully"
         }
         
-    except InvalidURLError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except DownloadError as e:
-        raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
-        logger.error(f"Download failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Download failed: {str(e)}")
+        if "Invalid" in str(e):
+            raise ValidationError(str(e))
+        if "failed" in str(e).lower():
+            raise ProcessingError(str(e))
+        raise e

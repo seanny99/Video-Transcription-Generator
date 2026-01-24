@@ -12,14 +12,16 @@ The **Video Transcription Generator** is a local desktop application that downlo
 - **Styling**: Vanilla CSS + Tailwind (Utility-first framework)
 - **Components**: Framer Motion (Animations), Lucide (Icons)
 - **Unit System**: `rem`-based relative scaling (supports accessible zoom)
-- **Communication**: Fetch API (HTTP) via `ApiClient` service
+- **Communication**: Fetch API (HTTP) via standardized `ApiClient` with custom `ApiError` handling
+- **State Management**: Specialized hooks (`useSettings`, `useTranscriptSync`, `useTranscriptPoller`)
 
 ### Backend (The Brain)
 - **Framework**: FastAPI (Python 3.11+)
 - **Server**: Uvicorn (ASGI)
 - **Database**: SQLite (Async via `aiosqlite` + `SQLAlchemy 2.0`)
 - **Job Management**: Internal `JobQueue` with thread-safe cancellation support
-- **Hardware Integration**: `SystemService` for real-time CPU/GPU detection (NVIDIA/AMD)
+- **Hardware Integration**: `SystemService` for real-time detection of CPU, GPU, RAM, VRAM, and Cores (PowerShell/WMIC on Windows).
+- **Error Handling**: Centralized `AppError` hierarchy with global middleware for consistent API responses.
 
 ### AI & Media Processing
 - **Downloader**: `yt-dlp` (YouTube video extraction)
@@ -34,7 +36,7 @@ The application follows an **Asynchronous Architecture** to handle long-running 
 
 ### 1. User Input & Validation
 - User pastes a URL or uploads a file via `MediaInput`.
-- Frontend calls `[GET] /api/system/specs` to show the user what hardware is being used before starting.
+- Frontend calls `[GET] /api/system/specs` to show user hardware (RAM, VRAM, GPU, Cores) and recommended model.
 
 ### 2. Request Initiation
 - User clicks "Transcribe".
@@ -48,7 +50,7 @@ The application follows an **Asynchronous Architecture** to handle long-running 
 
 ### 3. Background Processing (The Heavy Lifting)
 - The `TranscriptionManager` handles the lifecycle:
-    1.  **Hardware Check**: Selects `cuda` (NVIDIA) or `cpu` based on `SystemService`.
+    1.  **Hardware Check**: Selects `cuda` (NVIDIA) or `cpu` based on `SystemService`. Recommends models based on VRAM/RAM capacity.
     2.  **Audio Extraction**: FFmpeg converts source to 16kHz WAV.
     3.  **Dynamic Whisper**: Loads the model selected in Settings (e.g., `distil-large-v3`).
     4.  **Status Sync**: Updates DB at every step (Extracting -> Transcribing -> Completed).
@@ -67,6 +69,7 @@ The application follows an **Asynchronous Architecture** to handle long-running 
 │   ├── models/            # Database definitions (SQLAlchemy)
 │   ├── routers/           # API Endpoints (/youtube, /media, /transcripts, /config)
 │   ├── services/          # Business Logic (system_service, transcription_manager)
+│   ├── utils/             # Utilities (exceptions.py, logging)
 │   ├── config.py          # Settings & Runtime Path Injections
 │   └── main.py            # Entry point & App Factory
 │
@@ -74,9 +77,11 @@ The application follows an **Asynchronous Architecture** to handle long-running 
 │   ├── src/
 │   │   ├── main/          # Electron Main Process (Node.js)
 │   │   └── renderer/      # React App
-│   │       ├── components/# UI Components (MediaPlayer, HistorySidebar slider)
-│   │       ├── hooks/     # Custom hooks (useTranscriptSync, useTranscriptPoller)
-│   │       └── services/  # API wrappers
+│   │       ├── components/# UI Components (Modular decomposition: LandingScreen, InputModal, TranscriptPanel)
+│   │       ├── hooks/     # Custom hooks (useSettings, useTranscriptSync, useTranscriptPoller)
+│   │       ├── services/  # API wrappers (standardized ApiClient)
+│   │       ├── types/     # Shared Type definitions & Enums
+│   │       └── utils/     # Shared logic (transcriptUtils, settingsUtils)
 ```
 
 ## Key Configuration Details

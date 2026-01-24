@@ -1,25 +1,41 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef } from 'react';
 import { api } from '../services/api';
 import { MediaData, TranscriptData } from '../types';
-import { Youtube, Upload, Loader2, Sparkles } from 'lucide-react';
+import { Youtube, Upload, Loader2, Sparkles, X, FileText, CheckCircle2, ChevronRight } from 'lucide-react';
+import { cn } from '../utils'; // Reusing the cn utility
 
 interface MediaInputProps {
+    droppedFile?: File | null;
     onMediaLoaded: (media: MediaData) => void;
     onTranscriptLoaded: (transcript: TranscriptData) => void;
     onError: (message: string) => void;
     isLoading: boolean;
     setIsLoading: (loading: boolean) => void;
+    currentModel: string;
+    onModelChange: (model: string) => void;
 }
 
 function MediaInput({
+    droppedFile,
     onMediaLoaded,
     onTranscriptLoaded,
     onError,
     isLoading,
     setIsLoading,
+    currentModel,
+    onModelChange,
 }: MediaInputProps) {
+    const [activeTab, setActiveTab] = useState<'upload' | 'youtube'>('upload');
     const [youtubeUrl, setYoutubeUrl] = useState('');
     const [statusMessage, setStatusMessage] = useState('');
+    const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
+    React.useEffect(() => {
+        if (droppedFile) {
+            setSelectedFile(droppedFile);
+            setActiveTab('upload');
+        }
+    }, [droppedFile]);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleYouTubeSubmit = async (e: React.FormEvent) => {
@@ -48,8 +64,6 @@ function MediaInput({
             };
 
             onMediaLoaded(media);
-            // Polling is now handled by the parent component via useTranscriptPoller
-
         } catch (err: any) {
             setStatusMessage('');
             setIsLoading(false);
@@ -57,15 +71,21 @@ function MediaInput({
         }
     };
 
-    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (!file) return;
+        if (file) {
+            setSelectedFile(file);
+        }
+    };
+
+    const handleFileUpload = async () => {
+        if (!selectedFile) return;
 
         setIsLoading(true);
-        setStatusMessage(`Uploading: ${file.name}...`);
+        setStatusMessage(`Uploading: ${selectedFile.name}...`);
 
         try {
-            const result = await api.uploadMedia(file);
+            const result = await api.uploadMedia(selectedFile);
             const media: MediaData = {
                 id: result.id,
                 filename: result.filename,
@@ -76,84 +96,141 @@ function MediaInput({
                 streamUrl: api.getMediaStreamUrl(result.id),
             };
 
-            // Polling is now handled by the parent component via useTranscriptPoller
-
             onMediaLoaded(media);
-
         } catch (err: any) {
             setStatusMessage('');
             setIsLoading(false);
             onError(err.message || 'Failed to upload file');
         }
-
-        if (fileInputRef.current) {
-            fileInputRef.current.value = '';
-        }
     };
 
     return (
-        <div className="space-y-6">
-            {/* YouTube Section */}
-            <form onSubmit={handleYouTubeSubmit} className="relative group">
-                <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-neutral-400 group-focus-within:text-black dark:group-focus-within:text-white transition-colors">
-                    <Youtube className="w-5 h-5" />
-                </div>
-                <input
-                    type="text"
-                    value={youtubeUrl}
-                    onChange={(e) => setYoutubeUrl(e.target.value)}
-                    placeholder="YouTube URL..."
-                    className="w-full pl-12 pr-32 py-4 bg-neutral-100 dark:bg-neutral-800 border-none rounded-2xl focus:ring-2 focus:ring-black dark:focus:ring-white transition-all outline-none text-sm"
-                    disabled={isLoading}
-                />
+        <div className="space-y-8">
+            {/* Tabs */}
+            <div className="flex p-1 bg-accent/50 rounded-2xl w-full">
                 <button
-                    type="submit"
-                    disabled={isLoading}
-                    className="absolute right-2 inset-y-2 px-6 bg-black dark:bg-white text-white dark:text-black rounded-xl text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+                    onClick={() => setActiveTab('upload')}
+                    className={cn(
+                        "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all",
+                        activeTab === 'upload' ? "bg-white dark:bg-primary shadow-sm text-foreground dark:text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                    )}
                 >
-                    {isLoading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Transcribe'}
+                    <Upload className="w-4 h-4" />
+                    Upload File
                 </button>
-            </form>
-
-            <div className="relative flex items-center justify-center py-2">
-                <div className="w-full border-t border-neutral-100 dark:border-neutral-800" />
-                <span className="absolute bg-white dark:bg-neutral-900 px-4 text-[10px] font-bold uppercase tracking-widest text-neutral-400">or</span>
-            </div>
-
-            {/* File Upload Section */}
-            <div className="relative group">
-                <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".mp3,.mp4,.wav,.webm,.m4a,.mkv"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                    id="file-upload"
-                    disabled={isLoading}
-                />
-                <label
-                    htmlFor="file-upload"
-                    className={`flex flex-col items-center justify-center p-8 border-2 border-dashed border-neutral-200 dark:border-neutral-800 rounded-2xl cursor-pointer hover:border-black dark:hover:border-white transition-all ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                <button
+                    onClick={() => setActiveTab('youtube')}
+                    className={cn(
+                        "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all",
+                        activeTab === 'youtube' ? "bg-white dark:bg-primary shadow-sm text-foreground dark:text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                    )}
                 >
-                    <div className="p-4 rounded-full bg-neutral-100 dark:bg-neutral-800 mb-4 group-hover:scale-110 transition-transform">
-                        <Upload className="w-6 h-6 text-neutral-500" />
-                    </div>
-                    <span className="text-sm font-medium">Local Video or Audio</span>
-                    <span className="text-xs text-neutral-400 mt-1 uppercase tracking-tighter">MP4, MP3, MKV, WAV</span>
-                </label>
+                    <Youtube className="w-4 h-4" />
+                    YouTube Link
+                </button>
             </div>
 
-            {/* AI Status Banner */}
-            {statusMessage && (
-                <div className="flex items-center gap-3 p-4 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-100 dark:border-neutral-800 animate-in slide-in-from-bottom-2 duration-300">
-                    <Loader2 className="w-4 h-4 text-neutral-400 animate-spin" />
-                    <span className="text-sm font-medium text-neutral-600 dark:text-neutral-300 tracking-tight">
-                        {statusMessage}
-                    </span>
-                    <Sparkles className="w-3 h-3 text-emerald-500 animate-pulse ml-auto" />
-                </div>
-            )}
-        </div>
+            {/* Tab Content */}
+            <div className="min-h-[240px] flex flex-col">
+                {activeTab === 'upload' ? (
+                    <div className="flex-1 flex flex-col items-stretch space-y-4">
+                        {!selectedFile ? (
+                            <div
+                                onClick={() => fileInputRef.current?.click()}
+                                className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-border rounded-3xl hover:border-primary/50 hover:bg-accent/30 transition-all cursor-pointer group p-8"
+                            >
+                                <div className="w-16 h-16 bg-accent rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                                    <Upload className="w-8 h-8 text-muted-foreground" />
+                                </div>
+                                <p className="text-lg font-bold text-foreground">Drop audio/video here</p>
+                                <p className="text-sm text-muted-foreground">or browse files</p>
+                                <p className="mt-4 text-[10px] text-muted-foreground uppercase tracking-widest font-bold">
+                                    MP4, MP3, MKV, WAV • Up to 2GB
+                                </p>
+                                <input
+                                    ref={fileInputRef}
+                                    type="file"
+                                    accept=".mp3,.mp4,.wav,.webm,.m4a,.mkv"
+                                    onChange={handleFileSelect}
+                                    className="hidden"
+                                />
+                            </div>
+                        ) : (
+                            <div className="flex-1 flex flex-col items-center justify-center bg-accent/30 border border-border rounded-3xl p-8 relative overflow-hidden">
+                                <button
+                                    onClick={() => setSelectedFile(null)}
+                                    className="absolute top-4 right-4 p-1 rounded-full hover:bg-white dark:hover:bg-primary transition-colors text-muted-foreground"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                                <FileText className="w-12 h-12 text-primary mb-4" />
+                                <p className="text-lg font-bold text-foreground text-center truncate w-full px-4 mb-2">
+                                    {selectedFile.name}
+                                </p>
+                                <div className="flex items-center gap-4 text-xs font-medium text-muted-foreground">
+                                    <span>{(selectedFile.size / (1024 * 1024)).toFixed(1)} MB</span>
+                                    <span>•</span>
+                                    <span className="uppercase">{selectedFile.name.split('.').pop()}</span>
+                                </div>
+
+                                <button
+                                    onClick={handleFileUpload}
+                                    disabled={isLoading}
+                                    className="mt-8 w-full h-12 bg-primary text-primary-foreground rounded-2xl font-bold flex items-center justify-center gap-2 hover:opacity-90 transition-all disabled:opacity-50"
+                                >
+                                    <>
+                                        <span>Start Transcription</span>
+                                        <ChevronRight className="w-4 h-4" />
+                                    </>
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                    <form onSubmit={handleYouTubeSubmit} className="flex-1 flex flex-col space-y-4">
+                        <div className="relative flex-1">
+                            <div className="absolute top-5 left-5 text-muted-foreground">
+                                <Youtube className="w-6 h-6" />
+                            </div>
+                            <textarea
+                                value={youtubeUrl}
+                                onChange={(e) => setYoutubeUrl(e.target.value)}
+                                placeholder="Paste YouTube video link here..."
+                                className="w-full h-full min-h-[160px] pl-16 pr-6 pt-5 bg-accent/30 border border-border rounded-3xl outline-none focus:ring-2 focus:ring-primary/20 transition-all text-lg font-medium resize-none"
+                            />
+                        </div>
+                        <div className="text-xs text-muted-foreground flex items-center gap-2 px-2">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>Public videos supported</span>
+                        </div>
+                        <button
+                            type="submit"
+                            disabled={isLoading || !youtubeUrl.trim()}
+                            className="h-14 bg-primary text-primary-foreground rounded-2xl font-bold flex items-center justify-center gap-2 hover:opacity-90 transition-all disabled:opacity-50"
+                        >
+                            <>
+                                <span>Transcribe Video</span>
+                                <ChevronRight className="w-4 h-4" />
+                            </>
+                        </button>
+                    </form>
+                )}
+            </div>
+
+
+            {/* Status Message */}
+            {
+                statusMessage && (
+                    <div className="flex items-center gap-3 p-4 rounded-2xl bg-primary shadow-lg text-primary-foreground animate-in slide-in-from-bottom-2 duration-300">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span className="text-sm font-bold">
+                            {statusMessage}
+                        </span>
+                        <Sparkles className="w-3 h-3 animate-pulse ml-auto" />
+                    </div>
+                )
+            }
+        </div >
     );
 }
 

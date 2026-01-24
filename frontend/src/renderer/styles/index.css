@@ -1,22 +1,37 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 0 0% 0%;
-    --border: 0 0% 95%;
-    --input: 0 0% 95%;
-    --ring: 0 0% 0%;
+    --background: 40 10% 98%;
+    /* Warm white */
+    --foreground: 240 10% 4%;
+    --border: 240 6% 90%;
+    --input: 240 6% 90%;
+    --ring: 240 5% 65%;
+    --primary: 240 6% 10%;
+    --primary-foreground: 0 0% 98%;
+    --accent: 240 5% 96%;
+    --accent-foreground: 240 6% 10%;
+    --muted: 240 5% 65%;
+    --muted-foreground: 240 4% 46%;
   }
 
   .dark {
-    --background: 0 0% 0%;
-    --foreground: 0 0% 100%;
-    --border: 0 0% 10%;
-    --input: 0 0% 10%;
-    --ring: 0 0% 100%;
+    --background: 240 10% 4%;
+    --foreground: 0 0% 98%;
+    --border: 240 4% 16%;
+    --input: 240 4% 16%;
+    --ring: 240 4% 65%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 240 6% 10%;
+    --accent: 240 4% 16%;
+    --accent-foreground: 0 0% 98%;
+    --muted: 240 5% 65%;
+    --muted-foreground: 240 5% 65%;
   }
 
   body {
@@ -36,7 +51,7 @@
   }
 
   .custom-scrollbar::-webkit-scrollbar {
-    width: 4px;
+    width: 10px;
   }
 
   .custom-scrollbar::-webkit-scrollbar-track {
@@ -44,6 +59,7 @@
   }
 
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    @apply bg-neutral-200 dark:bg-neutral-800 rounded-full;
+    @apply bg-neutral-200 dark:bg-neutral-800 rounded-full border-[3px] border-solid border-transparent bg-clip-content hover:bg-neutral-300 dark:hover:bg-neutral-700;
+    min-height: 50px;
   }
 }

@@ -4,6 +4,23 @@ All notable changes to the **Video Transcription Generator** are documented here
 
 ---
 
+## [4.0.0] - 2026-01-24
+
+### ✨ User Experience & Interface
+- **New** Hardware-Based Recommendations: Settings now analyze your system (GPU VRAM, RAM, CPU Cores) to automatically recommend the optimal Whisper model.
+- **Improved** Modular Architecture: Decomposed the root `App.tsx` into specialized sub-components (`LandingScreen`, `InputModal`) and custom hooks (`useSettings`).
+- **Improved** Settings Drawer: Added a collapsible "Hardware" section to save vertical space and moved recommendation logic to dedicated utilities.
+- **Improved** Layout Stability: Fixed layout shifts caused by scrollbars in the settings panel.
+
+### 🧠 Core Engine & Backend
+- **Added** Centralized Exception Hierarchy: Introduced a standardized `AppError` system for predictable and robust error reporting.
+- **Added** Global Error Middleware: Implemented a centralized handler in `main.py` that translates application exceptions into consistent API responses.
+- **Enhanced** Hardware Detection: Now detects and reports exact VRAM (Video Memory), System RAM, and CPU Core counts.
+- **Refactored** Internal Services: Updated `YouTubeService` and `FileService` to eliminate redundant logic and use the new error-handling standard.
+- **Refined** VRAM Heuristics: Added smart detection for high-end GPUs that report capped memory due to 32-bit interface limitations.
+
+---
+
 ## [3.0.0] - 2026-01-24
 
 ### ✨ User Experience & Interface

@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 
 from config import settings
+from utils.exceptions import AppError
 from models.database import init_db, async_session
 from models.transcript import Transcript, TranscriptionStatus
 from engine.job_queue import JobQueue, TranscriptionJob
@@ -204,9 +205,17 @@ async def process_transcription_job(job: TranscriptionJob):
                 transcript.last_processed_chunk = chunk.index + 1
                 total_duration = chunk.start_time + chunk.duration
                 
+                # Calculate ETA
+                elapsed = (datetime.utcnow() - transcript.started_at).total_seconds()
+                chunks_done = chunk.index + 1
+                if chunks_done > 0:
+                    avg_per_chunk = elapsed / chunks_done
+                    remaining = len(chunks) - chunks_done
+                    transcript.estimated_seconds = avg_per_chunk * remaining
+                
                 # Commit after each chunk - this is the checkpoint
                 await db.commit()
-                logger.info(f"Checkpoint saved: chunk {chunk.index + 1}/{len(chunks)} complete")
+                logger.info(f"Checkpoint saved: chunk {chunk.index + 1}/{len(chunks)} complete (ETA: {transcript.estimated_seconds:.0f}s)")
             
             perf_logger.end_phase(f"Transcription Loop (Job {job.media_id})", "COMPLETED")
 
@@ -280,7 +289,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.app_name,
     description="Video/Audio transcription service with YouTube support",
-    version="2.0.0",
+    version="4.0.0",
     lifespan=lifespan
 )
 
@@ -292,6 +301,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(AppError)
+async def app_error_handler(request, exc: AppError):
+    """Global handler for custom application errors."""
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.message, "type": type(exc).__name__}
+    )
 
 # Include routers
 from routers import media, transcript, youtube, system

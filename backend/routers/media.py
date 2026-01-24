@@ -9,7 +9,8 @@ from sqlalchemy import select
 from pathlib import Path
 
 from models import get_db, MediaFile, MediaSource
-from services.file_service import FileService, InvalidFileError, FileSizeError
+from services.file_service import FileService
+from utils.exceptions import NotFoundError, ValidationError, ProcessingError
 
 router = APIRouter()
 file_service = FileService()
@@ -54,12 +55,10 @@ async def upload_file(
             "message": "File uploaded successfully"
         }
         
-    except InvalidFileError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except FileSizeError as e:
-        raise HTTPException(status_code=413, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+        if "type" in str(e) or "large" in str(e):
+            raise ValidationError(str(e))
+        raise ProcessingError(f"Upload failed: {str(e)}")
 
 
 @router.get("/{media_id}")
@@ -72,7 +71,7 @@ async def get_media(
     media = result.scalar_one_or_none()
     
     if not media:
-        raise HTTPException(status_code=404, detail="Media not found")
+        raise NotFoundError("Media not found")
     
     return {
         "id": media.id,
@@ -95,11 +94,11 @@ async def stream_media(
     media = result.scalar_one_or_none()
     
     if not media:
-        raise HTTPException(status_code=404, detail="Media not found")
+        raise NotFoundError("Media not found")
     
     file_path = Path(media.file_path)
     if not file_path.exists():
-        raise HTTPException(status_code=404, detail="Media file not found on disk")
+        raise NotFoundError("Media file not found on disk")
     
     return FileResponse(
         file_path,
@@ -118,7 +117,7 @@ async def delete_media(
     media = result.scalar_one_or_none()
     
     if not media:
-        raise HTTPException(status_code=404, detail="Media not found")
+        raise NotFoundError("Media not found")
     
     # Cancel any running/pending job
     from engine.job_queue import JobQueue

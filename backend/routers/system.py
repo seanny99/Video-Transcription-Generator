@@ -1,9 +1,10 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from typing import Dict, Any
 
 from services.system_service import system_service
 from engine.transcription_manager import TranscriptionManager
+from utils.exceptions import ProcessingError
 
 router = APIRouter()
 
@@ -36,4 +37,4 @@ async def update_config(config: ConfigUpdate):
         return {"status": "success", "message": f"Model updated to {config.whisper_model}"}
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise ProcessingError(str(e))

@@ -67,9 +67,16 @@ class TranscriptionManager:
         
         try:
             from faster_whisper import WhisperModel
+            import os
             
             # Update settings for consistency
             settings.whisper_model = self._model_name
+
+            # Dynamic Threading: Use ~70% of available cores (min 2, max 16)
+            # This ensures the UI remains responsive while maximizing throughput
+            total_cores = os.cpu_count() or 4
+            num_threads = max(2, min(16, int(total_cores * 0.70)))
+            logger.info(f"Configured engine with {num_threads} threads (detected {total_cores} cores)")
             
             # Try CUDA first, fall back to CPU
             try:
@@ -90,9 +97,10 @@ class TranscriptionManager:
                 self._model = WhisperModel(
                     self._model_name,
                     device="cpu",
-                    compute_type="int8"
+                    compute_type="int8",
+                    cpu_threads=num_threads
                 )
-                logger.info("Model loaded successfully on CPU")
+                logger.info(f"Model loaded successfully on CPU with {num_threads} threads")
                 
         except ImportError:
             raise RuntimeError("faster-whisper is not installed. Run: pip install faster-whisper")
@@ -124,7 +132,7 @@ class TranscriptionManager:
         
         # Transcription parameters optimized for accents and hallucination prevention
         transcribe_options = {
-            "beam_size": 5,  # Better decoding accuracy for accents
+            "beam_size": 2,  # Optimized: 2 is significantly faster than 5 but prevents greedy loop issues
             "vad_filter": True,  # Filter out silence/noise
             "vad_parameters": {
                 "min_silence_duration_ms": 500,  # Prevent hallucinations in long pauses
@@ -204,7 +212,7 @@ class TranscriptionManager:
         perf_logger.start_phase(f"Inference (Offset {time_offset:.1f}s)")
         
         transcribe_options = {
-            "beam_size": 5,
+            "beam_size": 2,
             "vad_filter": True,
             "vad_parameters": {
                 "min_silence_duration_ms": 500,

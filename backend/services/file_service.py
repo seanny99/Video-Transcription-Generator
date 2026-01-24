@@ -10,23 +10,12 @@ from pathlib import Path
 from typing import BinaryIO
 
 from config import settings
+from utils.exceptions import ValidationError, ProcessingError
 
 logger = logging.getLogger(__name__)
 
 
-class FileError(Exception):
-    """Base exception for file-related errors."""
-    pass
-
-
-class InvalidFileError(FileError):
-    """Raised when file type is not allowed."""
-    pass
-
-
-class FileSizeError(FileError):
-    """Raised when file exceeds size limit."""
-    pass
+# Removed local exception classes, using utils.exceptions instead
 
 
 class FileService:
@@ -48,14 +37,14 @@ class FileService:
         ext = Path(filename).suffix.lower()
         
         if ext not in self.allowed_extensions:
-            raise InvalidFileError(
+            raise ValidationError(
                 f"File type '{ext}' not allowed. "
                 f"Allowed types: {', '.join(self.allowed_extensions)}"
             )
         
         if file_size > self.max_size:
             max_mb = settings.max_upload_size_mb
-            raise FileSizeError(f"File too large. Maximum size is {max_mb}MB")
+            raise ValidationError(f"File too large. Maximum size is {max_mb}MB")
     
     async def save_upload(
         self,
@@ -92,7 +81,7 @@ class FileService:
                     if total_size > self.max_size:
                         await out_file.close()
                         file_path.unlink()  # Delete partial file
-                        raise FileSizeError(
+                        raise ValidationError(
                             f"File too large. Maximum size is {settings.max_upload_size_mb}MB"
                         )
                     
@@ -108,14 +97,14 @@ class FileService:
                 'media_type': self._get_media_type(ext),
             }
             
-        except FileSizeError:
-            raise
         except Exception as e:
             # Clean up on error
             if file_path.exists():
                 file_path.unlink()
             logger.error(f"Failed to save upload: {e}")
-            raise FileError(f"Failed to save file: {str(e)}")
+            if isinstance(e, ValidationError):
+                raise
+            raise ProcessingError(f"Failed to save file: {str(e)}")
     
     def _sanitize_filename(self, filename: str) -> str:
         """Remove unsafe characters from filename."""

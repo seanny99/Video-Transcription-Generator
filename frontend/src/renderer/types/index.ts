@@ -9,10 +9,18 @@ export interface TranscriptSegment {
     text: string;
 }
 
+export enum TranscriptionStatus {
+    Pending = 'pending',
+    Processing = 'processing',
+    Completed = 'completed',
+    Failed = 'failed',
+    Canceled = 'canceled',
+}
+
 export interface TranscriptData {
     id: number;
     media_id: number;
-    status: 'pending' | 'processing' | 'completed' | 'failed';
+    status: TranscriptionStatus;
     full_text: string | null;
     language: string;
     duration_seconds: number | null;
@@ -38,6 +46,14 @@ export interface YouTubeInfo {
     uploader: string;
 }
 
-export interface ApiError {
+export class ApiError extends Error {
     detail: string;
+    type?: string;
+
+    constructor(message: string, detail?: string, type?: string) {
+        super(message);
+        this.name = 'ApiError';
+        this.detail = detail || message;
+        this.type = type;
+    }
 }

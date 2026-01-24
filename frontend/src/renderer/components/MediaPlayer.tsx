@@ -1,14 +1,17 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import { MediaData } from '../types';
-import { Play, Pause, Volume2, Maximize, Music, Film } from 'lucide-react';
+import { Music, CheckCircle2, FileVideo, Loader2 } from 'lucide-react';
+import { cn } from '../utils';
 
 interface MediaPlayerProps {
     media: MediaData;
     currentTime: number;
     onTimeUpdate: (time: number) => void;
+    transcript: TranscriptData | null;
+    onToast?: (message: string, type: 'success' | 'info' | 'error') => void;
 }
 
-function MediaPlayer({ media, currentTime, onTimeUpdate }: MediaPlayerProps) {
+function MediaPlayer({ media, currentTime, onTimeUpdate, transcript, onToast }: MediaPlayerProps) {
     const mediaRef = useRef<HTMLVideoElement | HTMLAudioElement>(null);
     const isSeekingRef = useRef(false);
 
@@ -37,83 +40,73 @@ function MediaPlayer({ media, currentTime, onTimeUpdate }: MediaPlayerProps) {
     };
 
     return (
-        <div className="w-full h-full flex flex-col items-center justify-center space-y-8 animate-in fade-in zoom-in-95 duration-500">
-            {/* Backdrop / Glow Area */}
-            <div className="relative w-full h-full max-h-[80vh] aspect-video bg-neutral-100 dark:bg-neutral-900 rounded-[2.5rem] overflow-hidden shadow-2xl border border-neutral-200 dark:border-neutral-800 flex items-center justify-center">
-
-                {/* Visualizer Placeholder for Audio */}
-                {!isVideo && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-neutral-50 to-neutral-200 dark:from-neutral-900 dark:to-black">
-                        <div className="w-24 h-24 rounded-full bg-white dark:bg-neutral-800 shadow-xl flex items-center justify-center mb-6">
-                            <Music className="w-8 h-8 text-neutral-400 animate-pulse" />
-                        </div>
-                        <div className="flex gap-1.5 h-8 items-end">
-                            {[...Array(12)].map((_, i) => (
-                                <div
-                                    key={i}
-                                    className="w-1.5 bg-black dark:bg-white rounded-full transition-all"
-                                    style={{
-                                        height: `${Math.random() * 100}%`,
-                                        opacity: 0.3 + (Math.random() * 0.7)
-                                    }}
-                                />
-                            ))}
-                        </div>
+        <div className="w-full h-full flex flex-col space-y-6">
+            {/* Header / Title */}
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-accent rounded-xl flex items-center justify-center">
+                        <FileVideo className="w-5 h-5 text-primary" />
                     </div>
-                )}
-
-                {isVideo ? (
-                    <video
-                        ref={mediaRef as React.RefObject<HTMLVideoElement>}
-                        src={media.streamUrl}
-                        onTimeUpdate={handleTimeUpdate}
-                        controls
-                        className="w-full h-full object-contain bg-black"
-                    />
-                ) : (
-                    <audio
-                        ref={mediaRef as React.RefObject<HTMLAudioElement>}
-                        src={media.streamUrl}
-                        onTimeUpdate={handleTimeUpdate}
-                        controls
-                        className="absolute bottom-6 left-6 right-6 h-12 rounded-full opacity-60 hover:opacity-100 transition-opacity"
-                    />
-                )}
-
-                {/* Info Overlay (Top) */}
-                <div className="absolute top-6 left-8 right-8 flex items-center justify-between pointer-events-none">
-                    <div className="flex flex-col space-y-1">
-                        <div className="flex items-center gap-2">
-                            {isVideo ? <Film className="w-3 h-3 text-neutral-400" /> : <Music className="w-3 h-3 text-neutral-400" />}
-                            <span className="text-[10px] uppercase font-bold tracking-widest text-neutral-400 leading-none">
-                                {media.source} Source
-                            </span>
-                        </div>
-                        <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 truncate max-w-xs transition-colors pointer-events-auto">
+                    <div>
+                        <h2 className="text-xl font-bold tracking-tight truncate max-w-xl">
                             {media.title || media.original_filename}
                         </h2>
-                    </div>
-
-                    <div className="px-3 py-1.5 min-w-[3.5rem] flex items-center justify-center rounded-full bg-black/5 dark:bg-white/10 backdrop-blur-md border border-black/5 dark:border-white/10">
-                        <span className="font-mono text-xs font-medium dark:text-neutral-300">
-                            {formatTime(currentTime)}
-                        </span>
+                        <div className="flex items-center gap-3 text-xs font-semibold text-muted-foreground uppercase opacity-60">
+                            <span>{media.media_type.split('/')[1]}</span>
+                            {transcript?.duration_seconds ? (
+                                <>
+                                    <span>•</span>
+                                    <span>{formatTime(transcript.duration_seconds)}</span>
+                                </>
+                            ) : null}
+                        </div>
                     </div>
                 </div>
             </div>
 
-            {/* Secondary Controls / Info */}
-            <div className="flex items-center gap-12 text-neutral-400">
-                <div className="flex flex-col items-center">
-                    <span className="text-[10px] uppercase font-bold tracking-[0.2em] mb-1">Status</span>
-                    <span className="text-xs text-neutral-900 dark:text-neutral-100">Synchronized</span>
-                </div>
-                <div className="w-px h-8 bg-neutral-200 dark:bg-neutral-800" />
-                <div className="flex flex-col items-center">
-                    <span className="text-[10px] uppercase font-bold tracking-[0.2em] mb-1">Format</span>
-                    <span className="text-xs text-neutral-900 dark:text-neutral-100">{media.media_type.split('/')[1].toUpperCase()}</span>
+            {/* Player Center Wrapper */}
+            <div className="flex-1 flex items-center justify-center min-h-0 w-full overflow-hidden">
+                <div className="relative w-full aspect-video max-h-full bg-black rounded-[32px] border border-border shadow-2xl overflow-hidden group mx-auto">
+                    {!isVideo && (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-accent/20 to-accent/5">
+                            <div className="w-32 h-32 rounded-[2.5rem] bg-white dark:bg-neutral-900 shadow-2xl flex items-center justify-center mb-8 border border-border">
+                                <Music className="w-12 h-12 text-primary" />
+                            </div>
+                            <div className="flex gap-2 h-12 items-end">
+                                {[...Array(16)].map((_, i) => (
+                                    <div
+                                        key={i}
+                                        className="w-2 bg-primary/20 dark:bg-primary/40 rounded-full transition-all animate-pulse"
+                                        style={{
+                                            height: `${Math.random() * 80 + 20}%`,
+                                            animationDelay: `${i * 0.1}s`
+                                        }}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {isVideo ? (
+                        <video
+                            ref={mediaRef as React.RefObject<HTMLVideoElement>}
+                            src={media.streamUrl}
+                            onTimeUpdate={handleTimeUpdate}
+                            controls
+                            className="w-full h-full object-contain"
+                        />
+                    ) : (
+                        <audio
+                            ref={mediaRef as React.RefObject<HTMLAudioElement>}
+                            src={media.streamUrl}
+                            onTimeUpdate={handleTimeUpdate}
+                            controls
+                            className="absolute bottom-8 left-8 right-8 h-14 rounded-2xl opacity-80 hover:opacity-100 transition-all shadow-2xl"
+                        />
+                    )}
                 </div>
             </div>
+
         </div>
     );
 }

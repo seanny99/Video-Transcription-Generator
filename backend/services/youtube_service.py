@@ -11,23 +11,12 @@ from typing import Optional
 import yt_dlp
 
 from config import settings
+from utils.exceptions import ValidationError, ProcessingError
 
 logger = logging.getLogger(__name__)
 
 
-class YouTubeError(Exception):
-    """Base exception for YouTube-related errors."""
-    pass
-
-
-class InvalidURLError(YouTubeError):
-    """Raised when URL is not a valid YouTube URL."""
-    pass
-
-
-class DownloadError(YouTubeError):
-    """Raised when download fails."""
-    pass
+# Removed local exception classes, using utils.exceptions instead
 
 
 class YouTubeService:
@@ -68,11 +57,11 @@ class YouTubeService:
             Dict with title, duration, thumbnail, etc.
         """
         if not self.validate_url(url):
-            raise InvalidURLError(f"Invalid YouTube URL: {url}")
+            raise ValidationError(f"Invalid YouTube URL: {url}")
         
         # Reject playlist URLs
         if self.is_playlist_url(url):
-            raise InvalidURLError(
+            raise ValidationError(
                 "Playlist URLs are not supported. Please paste a single video URL "
                 "(remove '&list=...' from the URL if present)"
             )
@@ -96,7 +85,7 @@ class YouTubeService:
                 }
         except Exception as e:
             logger.error(f"Failed to get video info: {e}")
-            raise DownloadError(f"Could not fetch video info: {str(e)}")
+            raise ProcessingError(f"Could not fetch video info: {str(e)}")
     
     def download_video(
         self,
@@ -116,11 +105,11 @@ class YouTubeService:
             Dict with file_path, title, and other metadata
         """
         if not self.validate_url(url):
-            raise InvalidURLError(f"Invalid YouTube URL: {url}")
+            raise ValidationError(f"Invalid YouTube URL: {url}")
         
         # Reject playlist URLs
         if self.is_playlist_url(url):
-            raise InvalidURLError(
+            raise ValidationError(
                 "Playlist URLs are not supported. Please paste a single video URL "
                 "(remove '&list=...' from the URL if present)"
             )
@@ -184,7 +173,7 @@ class YouTubeService:
                 
         except yt_dlp.DownloadError as e:
             logger.error(f"Download failed: {e}")
-            raise DownloadError(f"Failed to download video: {str(e)}")
+            raise ProcessingError(f"Failed to download video: {str(e)}")
         except Exception as e:
             logger.error(f"Unexpected error during download: {e}")
-            raise DownloadError(f"Download failed: {str(e)}")
+            raise ProcessingError(f"Download failed: {str(e)}")

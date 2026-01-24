@@ -1,6 +1,4 @@
-/**
- * API client for backend communication.
- */
+import { MediaData, TranscriptData, YouTubeInfo, TranscriptionStatus, ApiError } from '../types';
 
 const API_BASE = 'http://127.0.0.1:8081/api';
 
@@ -27,21 +25,19 @@ class ApiClient {
 
         if (!response.ok) {
             const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
-            throw new Error(error.detail || `Request failed: ${response.status}`);
+            throw new ApiError(
+                error.detail || `Request failed: ${response.status}`,
+                error.detail,
+                error.type
+            );
         }
 
         return response.json();
     }
 
     // YouTube endpoints
-    async getYouTubeInfo(url: string) {
-        return this.request<{
-            id: string;
-            title: string;
-            duration: number;
-            thumbnail: string;
-            uploader: string;
-        }>('/youtube/info', {
+    async getYouTubeInfo(url: string): Promise<YouTubeInfo> {
+        return this.request<YouTubeInfo>('/youtube/info', {
             method: 'POST',
             body: JSON.stringify({ url }),
         });
@@ -50,6 +46,7 @@ class ApiClient {
     async downloadYouTube(url: string, autoTranscribe: boolean = true) {
         return this.request<{
             media_id: number;
+            transcript_id: number | null;
             title: string;
             filename: string;
             transcription_started: boolean;
@@ -76,74 +73,36 @@ class ApiClient {
 
         if (!response.ok) {
             const error = await response.json().catch(() => ({ detail: 'Upload failed' }));
-            throw new Error(error.detail);
+            throw new ApiError(error.detail, error.detail, error.type);
         }
 
         return response.json();
     }
 
-    async getMedia(mediaId: number) {
-        return this.request<{
-            id: number;
-            filename: string;
-            original_filename: string;
-            media_type: string;
-            source: string;
-            title: string | null;
-        }>(`/media/${mediaId}`);
+    async getMedia(mediaId: number): Promise<MediaData> {
+        const data = await this.request<any>(`/media/${mediaId}`);
+        return {
+            ...data,
+            streamUrl: this.getMediaStreamUrl(mediaId)
+        };
     }
 
     getMediaStreamUrl(mediaId: number): string {
         return `${this.baseUrl}/media/${mediaId}/stream`;
     }
 
-    // Transcript endpoints
-    async getTranscript(transcriptId: number) {
-        return this.request<{
-            id: number;
-            media_id: number;
-            status: string;
-            full_text: string | null;
-            segments: Array<{
-                id: number;
-                start_time: number;
-                end_time: number;
-                text: string;
-            }>;
-            error_message: string | null;
-        }>(`/transcripts/${transcriptId}`);
+    async getTranscript(transcriptId: number): Promise<TranscriptData> {
+        return this.request<TranscriptData>(`/transcripts/${transcriptId}`);
     }
 
-    async getTranscriptByMedia(mediaId: number) {
-        return this.request<{
-            id: number;
-            media_id: number;
-            status: string;
-            full_text: string | null;
-            language: string;
-            duration_seconds: number | null;
-            segments: Array<{
-                id: number;
-                start_time: number;
-                end_time: number;
-                text: string;
-            }>;
-            error_message: string | null;
-        }>(`/transcripts/media/${mediaId}`);
-    }
-
-    async getTranscriptStatus(transcriptId: number) {
-        return this.request<{
-            id: number;
-            status: string;
-            error_message: string | null;
-        }>(`/transcripts/${transcriptId}/status`);
+    async getTranscriptByMedia(mediaId: number): Promise<TranscriptData> {
+        return this.request<TranscriptData>(`/transcripts/media/${mediaId}`);
     }
 
     async startTranscription(mediaId: number) {
         return this.request<{
             transcript_id: number;
-            status: string;
+            status: TranscriptionStatus;
         }>(`/transcripts/media/${mediaId}/transcribe`, {
             method: 'POST',
         });
@@ -162,6 +121,10 @@ class ApiClient {
             gpu: string;
             os: string;
             arch: string;
+            ram: number;
+            vram: number;
+            cores: number;
+            threads: number;
         }>('/system/specs');
     }
 

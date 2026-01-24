@@ -13,6 +13,7 @@ from typing import List, Optional
 from dataclasses import dataclass
 
 from config import settings
+from utils.exceptions import ProcessingError
 
 logger = logging.getLogger(__name__)
 
@@ -76,9 +77,9 @@ class AudioChunker:
             return float(result.stdout.strip())
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to get audio duration: {e.stderr}")
-            raise RuntimeError(f"Failed to get audio duration: {e.stderr}")
+            raise ProcessingError(f"Failed to get audio duration: {e.stderr}")
         except ValueError:
-            raise RuntimeError("Could not parse audio duration")
+            raise ProcessingError("Could not parse audio duration")
     
     def split_audio(
         self,
@@ -145,7 +146,7 @@ class AudioChunker:
                 )
             except subprocess.CalledProcessError as e:
                 logger.error(f"Failed to create chunk {chunk_index}: {e.stderr}")
-                raise RuntimeError(f"Failed to create chunk: {e.stderr}")
+                raise ProcessingError(f"Failed to create chunk: {e.stderr}")
             
             chunks.append(ChunkInfo(
                 index=chunk_index,

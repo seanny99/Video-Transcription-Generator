@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { TranscriptData } from '../types';
-import { Search, Hash, MessageSquareText, FileText } from 'lucide-react';
-import { cn } from './HistorySidebar';
+import { TranscriptData, TranscriptionStatus } from '../types';
+import { Search, MessageSquareText, FileText, Loader2, Download, Copy, Clock, ToggleLeft, ToggleRight, Check, CheckCircle2, AlertCircle } from 'lucide-react';
+import { cn } from '../utils';
+import { formatTime, generateSrt, generateTxt, downloadFile } from '../utils/transcriptUtils';
 
 interface TranscriptPanelProps {
     transcript: TranscriptData | null;
@@ -18,6 +19,17 @@ function TranscriptPanel({
 }: TranscriptPanelProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const activeRef = useRef<HTMLDivElement>(null);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [showTimestamps, setShowTimestamps] = useState(true);
+    const [isCopied, setIsCopied] = useState(false);
+
+    const handleCopy = async () => {
+        if (!transcript) return;
+        const text = generateTxt(transcript.segments, transcript.full_text);
+        await navigator.clipboard.writeText(text);
+        setIsCopied(true);
+        setTimeout(() => setIsCopied(false), 2000);
+    };
 
     useEffect(() => {
         if (activeRef.current && containerRef.current) {
@@ -31,14 +43,6 @@ function TranscriptPanel({
             }
         }
     }, [activeSegmentId]);
-
-    const formatTime = (seconds: number): string => {
-        const mins = Math.floor(seconds / 60);
-        const secs = Math.floor(seconds % 60);
-        return `${mins}:${secs.toString().padStart(2, '0')}`;
-    };
-
-    const [searchQuery, setSearchQuery] = useState('');
 
     // Filter segments based on search query
     const filteredSegments = useMemo(() => {
@@ -59,7 +63,7 @@ function TranscriptPanel({
         return (
             <>
                 {text.slice(0, index)}
-                <mark className="bg-yellow-200 dark:bg-yellow-800 text-inherit rounded px-0.5">
+                <mark className="bg-primary/20 text-primary rounded px-0.5 font-semibold">
                     {text.slice(index, index + searchQuery.length)}
                 </mark>
                 {text.slice(index + searchQuery.length)}
@@ -72,121 +76,119 @@ function TranscriptPanel({
 
         let content = '';
         if (format === 'txt') {
-            content = transcript.full_text || transcript.segments.map(s => s.text).join(' ');
+            content = generateTxt(transcript.segments, transcript.full_text);
         } else {
-            // Generate SRT
-            content = transcript.segments.map((seg, i) => {
-                const start = formatSrtTime(seg.start_time);
-                const end = formatSrtTime(seg.end_time);
-                return `${i + 1}\n${start} --> ${end}\n${seg.text}\n`;
-            }).join('\n');
+            content = generateSrt(transcript.segments);
         }
 
-        const blob = new Blob([content], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `transcript.${format}`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-    };
-
-    const formatSrtTime = (seconds: number): string => {
-        const date = new Date(0);
-        date.setSeconds(seconds);
-        const iso = date.toISOString().substr(11, 8);
-        const ms = Math.floor((seconds % 1) * 1000).toString().padStart(3, '0');
-        return `${iso},${ms}`;
+        downloadFile(content, `transcript.${format}`);
     };
 
     return (
-        <div className="h-full flex flex-col bg-white dark:bg-black transition-colors duration-300">
+        <div className="w-full h-full flex flex-col space-y-4 bg-background border-l border-border">
             {/* Panel Header */}
-            <div className="p-6 pb-4 border-b border-neutral-100 dark:border-neutral-900">
-                <div className="flex items-center gap-4 mb-4">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-lg bg-neutral-100 dark:bg-neutral-800">
-                            <MessageSquareText className="w-5 h-5 text-neutral-600 dark:text-neutral-400" />
+            <div className="p-4 pb-2 border-b border-border bg-accent/5">
+                <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 flex items-center justify-center bg-primary/10 rounded-xl">
+                            <MessageSquareText className="w-4 h-4 text-primary" />
                         </div>
-                        <h2 className="text-lg font-semibold tracking-tight">Transcript</h2>
+                        <h2 className="font-bold">Transcript</h2>
+                        {transcript && (
+                            <div className="flex items-center gap-2">
+                                {transcript.status === TranscriptionStatus.Completed ? (
+                                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+                                        <CheckCircle2 className="w-3 h-3" />
+                                        SUCCESS
+                                    </span>
+                                ) : transcript.status === TranscriptionStatus.Processing ? (
+                                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/10 text-blue-500 border border-blue-500/20 animate-pulse">
+                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                        PROCESSING
+                                    </span>
+                                ) : transcript.status === TranscriptionStatus.Failed ? (
+                                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500/10 text-red-500 border border-red-500/20">
+                                        <AlertCircle className="w-3 h-3" />
+                                        FAILED
+                                    </span>
+                                ) : (
+                                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-zinc-500/10 text-zinc-500 border border-zinc-500/20">
+                                        PENDING
+                                    </span>
+                                )}
+                            </div>
+                        )}
                     </div>
-                    {transcript && (
-                        <div className="px-2.5 h-6 flex items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-900/30">
-                            <span className="text-[0.6rem] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 pt-px">
-                                {transcript.status}
-                            </span>
+
+                    <div className="flex items-center gap-2">
+                        <div className="flex bg-accent/30 rounded-xl p-1 gap-1">
+                            <button
+                                onClick={handleCopy}
+                                disabled={!transcript}
+                                className="p-2 hover:bg-white dark:hover:bg-black rounded-lg text-muted-foreground hover:text-foreground transition-all flex items-center gap-2"
+                                title="Copy Full Text"
+                            >
+                                {isCopied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                            </button>
+                            <button
+                                onClick={() => handleExport('txt')}
+                                disabled={!transcript}
+                                className="p-2 hover:bg-white dark:hover:bg-black rounded-lg text-muted-foreground hover:text-foreground transition-all flex items-center gap-2"
+                                title="Download Text"
+                            >
+                                <FileText className="w-4 h-4" />
+                            </button>
+                            <button
+                                onClick={() => handleExport('srt')}
+                                disabled={!transcript}
+                                className="p-2 hover:bg-white dark:hover:bg-black rounded-lg text-muted-foreground hover:text-foreground transition-all flex items-center gap-2"
+                                title="Download SRT"
+                            >
+                                <Download className="w-4 h-4" />
+                            </button>
                         </div>
-                    )}
+                        <div className="w-[1px] h-6 bg-border mx-1" />
+                        <button
+                            onClick={() => setShowTimestamps(!showTimestamps)}
+                            className="p-2 rounded-xl hover:bg-accent transition-all text-muted-foreground"
+                            title="Toggle Timestamps"
+                        >
+                            {showTimestamps ? <ToggleRight className="w-5 h-5 text-primary" /> : <ToggleLeft className="w-5 h-5" />}
+                        </button>
+                    </div>
                 </div>
 
-                {/* Search / Context Bar */}
-                <div className="relative group mb-2">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 transition-colors group-focus-within:text-black dark:group-focus-within:text-white" />
+                {/* Search / Context Bar (⌘K style) */}
+                <div className="relative group mb-4">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-foreground transition-colors" />
                     <input
                         type="text"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         placeholder="Search transcript..."
-                        className="w-full bg-neutral-50 dark:bg-neutral-900/50 border border-neutral-100 dark:border-neutral-800 rounded-xl pl-10 pr-4 py-2.5 text-sm outline-none focus:ring-1 focus:ring-black dark:focus:ring-white transition-all"
+                        className="w-full bg-accent/30 border border-border rounded-2xl pl-12 pr-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                     />
                 </div>
-
-                {/* Export Button */}
-                {transcript && (
-                    <div className="flex gap-2">
-                        <button
-                            onClick={() => handleExport('txt')}
-                            className="p-2 rounded-lg bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors text-neutral-600 dark:text-neutral-400"
-                            title="Export as Text"
-                        >
-                            <FileText className="w-4 h-4" />
-                        </button>
-                        <button
-                            onClick={() => handleExport('srt')}
-                            className="p-2 rounded-lg bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors text-neutral-600 dark:text-neutral-400 font-mono text-[0.65rem] font-bold flex items-center"
-                            title="Export as SRT"
-                        >
-                            SRT
-                        </button>
-                    </div>
-                )}
             </div>
 
-            {/* Main Content Area */}
+            {/* List Content */}
             <div className="flex-1 overflow-hidden relative">
                 <div
                     ref={containerRef}
-                    className="h-full overflow-y-auto px-6 py-4 space-y-1 scroll-smooth custom-scrollbar"
+                    className="h-full overflow-y-auto px-6 py-4 space-y-2 custom-scrollbar"
                 >
                     {isLoading && !transcript ? (
                         <div className="h-full flex flex-col items-center justify-center p-12 text-center">
-                            <div className="w-12 h-12 border-4 border-neutral-100 dark:border-neutral-800 border-t-emerald-500 rounded-full animate-spin mb-6" />
-                            <h3 className="text-sm font-semibold mb-2">Transcribing...</h3>
-                            <p className="text-xs text-neutral-500 max-w-[200px] leading-relaxed">
-                                Analyzing audio and generating text. Segments will appear here automatically.
+                            <Loader2 className="w-10 h-10 animate-spin text-primary mb-6" />
+                            <h3 className="text-lg font-bold mb-2">Analyzing audio...</h3>
+                            <p className="text-sm text-muted-foreground max-w-[240px]">
+                                Generating your transcript with high accuracy AI models.
                             </p>
                         </div>
-                    ) : (transcript?.status === 'processing' || transcript?.status === 'pending') && (!transcript.segments || transcript.segments.length === 0) ? (
-                        <div className="h-full flex flex-col items-center justify-center p-12 text-center text-neutral-400">
-                            <div className="w-12 h-12 border-4 border-neutral-100 dark:border-neutral-800 border-t-emerald-500 rounded-full animate-spin mb-6" />
-                            <h3 className="text-sm font-semibold mb-2">Transcribing...</h3>
-                            <p className="text-xs text-neutral-500 max-w-[200px] leading-relaxed">
-                                Analyzing audio and generating text. Segments will appear here automatically.
-                            </p>
-                        </div>
-                    ) : !transcript ? (
-                        <div className="h-full flex flex-col items-center justify-center p-12 text-center text-neutral-400">
-                            <FileText className="w-10 h-10 mb-4 opacity-20" />
-                            <p className="text-sm font-medium">Ready to process</p>
-                            <p className="text-xs mt-1">Segments will appear here synchronized with playback.</p>
-                        </div>
-                    ) : filteredSegments.length === 0 ? (
-                        <div className="h-full flex flex-col items-center justify-center p-12 text-center text-neutral-400">
-                            <Search className="w-10 h-10 mb-4 opacity-20" />
-                            <p className="text-sm font-medium">No matches found</p>
-                            <p className="text-xs mt-1">Try a different search term.</p>
+                    ) : filteredSegments.length === 0 && transcript ? (
+                        <div className="h-full flex flex-col items-center justify-center p-12 text-center text-muted-foreground">
+                            <Search className="w-12 h-12 mb-4 opacity-20" />
+                            <p className="text-sm font-bold">No matches found</p>
                         </div>
                     ) : (
                         filteredSegments.map((segment) => (
@@ -195,44 +197,47 @@ function TranscriptPanel({
                                 ref={segment.id === activeSegmentId ? activeRef : null}
                                 onClick={() => onSegmentClick(segment.start_time)}
                                 className={cn(
-                                    "group relative p-4 rounded-xl cursor-pointer transition-all duration-300",
-                                    segment.id !== activeSegmentId && "hover:bg-neutral-50 dark:hover:bg-neutral-900",
+                                    "group relative p-5 rounded-3xl border transition-all duration-300 cursor-pointer",
                                     segment.id === activeSegmentId
-                                        ? "bg-black !text-white dark:bg-white dark:!text-black shadow-lg shadow-black/10 scale-[1.02] z-10"
-                                        : "text-neutral-600 dark:text-neutral-400"
+                                        ? "bg-white dark:bg-accent/20 border-border shadow-md ring-1 ring-primary/5"
+                                        : "bg-transparent border-transparent hover:bg-accent/10"
                                 )}
                             >
+                                {/* Left Accent Bar */}
+                                {segment.id === activeSegmentId && (
+                                    <div className="absolute left-1.5 top-5 bottom-5 w-1 bg-primary rounded-full" />
+                                )}
+
                                 <div className="flex gap-4 items-start">
-                                    <span className={cn(
-                                        "font-mono text-[0.65rem] font-bold mt-1 min-w-[2.5rem]",
-                                        segment.id === activeSegmentId
-                                            ? "!text-neutral-400"
-                                            : "text-neutral-300 dark:text-neutral-700"
-                                    )}>
-                                        {formatTime(segment.start_time)}
-                                    </span>
-                                    <p className={cn(
-                                        "text-sm leading-relaxed font-normal transition-colors",
-                                        segment.id === activeSegmentId ? "!text-white dark:!text-black" : ""
-                                    )}>
-                                        {highlightText(segment.text)}
-                                    </p>
+                                    {showTimestamps && (
+                                        <div className={cn(
+                                            "flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-mono font-bold transition-all",
+                                            segment.id === activeSegmentId
+                                                ? "bg-primary text-primary-foreground"
+                                                : "bg-accent/50 text-muted-foreground group-hover:bg-accent"
+                                        )}>
+                                            <Clock className="w-3 h-3" />
+                                            {formatTime(segment.start_time)}
+                                        </div>
+                                    )}
+                                    <div className="flex-1">
+                                        <p className={cn(
+                                            "text-sm leading-relaxed font-medium transition-colors",
+                                            segment.id === activeSegmentId
+                                                ? "text-foreground"
+                                                : "text-muted-foreground group-hover:text-foreground"
+                                        )}>
+                                            {highlightText(segment.text)}
+                                        </p>
+                                    </div>
                                 </div>
 
-                                {segment.id === activeSegmentId && (
-                                    <div
-                                        className="absolute left-1 top-4 bottom-4 w-1 bg-white dark:bg-black rounded-full"
-                                    />
-                                )}
                             </div>
                         ))
                     )}
                 </div>
-
-                {/* Bottom Fade Gradient */}
-                <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-white dark:from-black to-transparent pointer-events-none" />
             </div>
-        </div >
+        </div>
     );
 }
 

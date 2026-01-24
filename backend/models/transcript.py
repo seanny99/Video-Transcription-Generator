@@ -44,6 +44,14 @@ class Transcript(Base):
     media = relationship("MediaFile", back_populates="transcript")
     segments = relationship("TranscriptSegment", back_populates="transcript", cascade="all, delete-orphan")
 
+    @property
+    def remaining_seconds(self) -> float:
+        """Calculate estimated remaining seconds if processing."""
+        if self.status == TranscriptionStatus.PROCESSING and self.started_at and self.estimated_seconds:
+            elapsed = (datetime.utcnow() - self.started_at).total_seconds()
+            return max(0, self.estimated_seconds - elapsed)
+        return 0.0
+
 
 class TranscriptSegment(Base):
     """Individual segment of a transcript with timing."""
