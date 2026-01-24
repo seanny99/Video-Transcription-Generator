@@ -11,7 +11,16 @@ from config import settings
 # SQLite with async support
 DATABASE_URL = settings.database_url.replace("sqlite:///", "sqlite+aiosqlite:///")
 
-engine = create_async_engine(DATABASE_URL, echo=settings.debug)
+# SQLite needs special handling for async operations
+engine = create_async_engine(
+    DATABASE_URL, 
+    echo=settings.debug,
+    connect_args={
+        "timeout": 30,  # Wait up to 30 seconds for locks
+        "check_same_thread": False,
+    },
+    pool_pre_ping=True,  # Verify connections before use
+)
 async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 Base = declarative_base()

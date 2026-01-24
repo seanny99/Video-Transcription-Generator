@@ -16,6 +16,7 @@ class TranscriptionStatus(enum.Enum):
     PROCESSING = "processing"
     COMPLETED = "completed"
     FAILED = "failed"
+    CANCELED = "canceled"
 
 
 class Transcript(Base):
@@ -25,13 +26,19 @@ class Transcript(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     media_id = Column(Integer, ForeignKey("media_files.id"), nullable=False)
-    status = Column(Enum(TranscriptionStatus), default=TranscriptionStatus.PENDING)
+    status = Column(Enum(TranscriptionStatus), default=TranscriptionStatus.PENDING, index=True)
     full_text = Column(Text, nullable=True)
     language = Column(String(10), default="en")
     duration_seconds = Column(Float, nullable=True)
+    estimated_seconds = Column(Float, nullable=True)  # ETA for transcription
+    started_at = Column(DateTime, nullable=True)  # When processing started
     created_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)
     error_message = Column(Text, nullable=True)
+    
+    # Chunk-based transcription tracking for resume capability
+    last_processed_chunk = Column(Integer, default=0)  # Index of last completed chunk (0 = none)
+    total_chunks = Column(Integer, nullable=True)      # Total chunks for this file
     
     # Relationships
     media = relationship("MediaFile", back_populates="transcript")

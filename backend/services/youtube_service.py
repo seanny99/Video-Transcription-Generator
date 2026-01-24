@@ -37,12 +37,28 @@ class YouTubeService:
         r'(https?://)?(www\.)?(youtube\.com|youtu\.be)/.+'
     )
     
+    # Patterns that indicate playlist URLs
+    PLAYLIST_PATTERNS = [
+        r'[?&]list=',           # Regular playlist parameter
+        r'/playlist\?',          # Playlist page
+        r'youtube\.com/c/',      # Channel page
+        r'youtube\.com/channel/', # Channel page
+        r'youtube\.com/@',        # Handle page
+    ]
+    
     def __init__(self):
         self.download_dir = settings.download_dir
         
     def validate_url(self, url: str) -> bool:
         """Check if URL is a valid YouTube URL."""
         return bool(self.YOUTUBE_REGEX.match(url))
+    
+    def is_playlist_url(self, url: str) -> bool:
+        """Check if URL is a playlist, channel, or mix."""
+        for pattern in self.PLAYLIST_PATTERNS:
+            if re.search(pattern, url):
+                return True
+        return False
     
     def get_video_info(self, url: str) -> dict:
         """
@@ -54,10 +70,18 @@ class YouTubeService:
         if not self.validate_url(url):
             raise InvalidURLError(f"Invalid YouTube URL: {url}")
         
+        # Reject playlist URLs
+        if self.is_playlist_url(url):
+            raise InvalidURLError(
+                "Playlist URLs are not supported. Please paste a single video URL "
+                "(remove '&list=...' from the URL if present)"
+            )
+        
         ydl_opts = {
             'quiet': False,
             'no_warnings': False,
             'extract_flat': False,
+            'noplaylist': True,  # Never download playlists
         }
         
         try:
@@ -94,6 +118,13 @@ class YouTubeService:
         if not self.validate_url(url):
             raise InvalidURLError(f"Invalid YouTube URL: {url}")
         
+        # Reject playlist URLs
+        if self.is_playlist_url(url):
+            raise InvalidURLError(
+                "Playlist URLs are not supported. Please paste a single video URL "
+                "(remove '&list=...' from the URL if present)"
+            )
+        
         # Generate unique filename
         file_id = str(uuid.uuid4())[:8]
         output_template = str(self.download_dir / f"{file_id}_%(title)s.%(ext)s")
@@ -103,6 +134,7 @@ class YouTubeService:
             'quiet': False,
             'no_warnings': False,
             'ffmpeg_location': settings.ffmpeg_path,
+            'noplaylist': True,  # Never download playlists
         }
         
         if extract_audio:
@@ -142,7 +174,7 @@ class YouTubeService:
                     filename = filename.rsplit('.', 1)[0] + '.mp3'
                 
                 return {
-                    'file_path': filename,
+                    'file_path': str(Path(filename).resolve()),
                     'filename': Path(filename).name,
                     'title': info.get('title'),
                     'duration': info.get('duration'),

@@ -31,7 +31,7 @@ async def upload_file(
         file_service.validate_file(file.filename, file.size or 0)
         
         # Save file to disk
-        result = await file_service.save_upload(file.file, file.filename)
+        result = await file_service.save_upload(file, file.filename)
         
         # Create database record
         media = MediaFile(
@@ -44,6 +44,7 @@ async def upload_file(
         db.add(media)
         await db.flush()
         await db.refresh(media)
+        await db.commit()
         
         return {
             "id": media.id,
@@ -119,10 +120,38 @@ async def delete_media(
     if not media:
         raise HTTPException(status_code=404, detail="Media not found")
     
-    # Delete file from disk
-    file_service.delete_file(media.filename)
+    # Cancel any running/pending job
+    from engine.job_queue import JobQueue
+    JobQueue.get_instance().cancel_job(media_id)
+    
+    # Clean up chunks
+    from engine.audio_chunker import AudioChunker
+    AudioChunker().cleanup_chunks(media_id)
+
+    # Delete file from disk (handle both uploads and direct paths)
+    try:
+        if media.source == MediaSource.UPLOAD:
+            file_service.delete_file(media.filename)
+        else:
+            # For YouTube/Direct, use the stored file_path
+            path = Path(media.file_path)
+            logger.info(f"Attempting to delete file at: {path} (Exists: {path.exists()})")
+            if path.exists():
+                path.unlink()
+                logger.info(f"Deleted source file: {path}")
+                # Try to delete accompanying json/info files if they exist (yt-dlp artifacts)
+                for ext in ['.info.json', '.description', '.jpg', '.webp', '.png']:
+                    meta_file = path.with_suffix(ext)
+                    if meta_file.exists():
+                        meta_file.unlink()
+            else:
+                logger.warning(f"File not found during deletion: {path}")
+    except Exception as e:
+        # Log error but continue with DB deletion
+        logger.error(f"Error deleting file {media.file_path}: {e}")
     
     # Delete from database (cascades to transcript)
     await db.delete(media)
+    await db.commit()
     
     return {"message": "Media deleted successfully"}

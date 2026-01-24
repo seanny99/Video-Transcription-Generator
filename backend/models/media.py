@@ -27,9 +27,9 @@ class MediaFile(Base):
     file_path = Column(String(500), nullable=False)
     media_type = Column(String(50), nullable=False)  # video/mp4, audio/mp3, etc.
     source = Column(Enum(MediaSource), default=MediaSource.UPLOAD)
-    source_url = Column(String(500), nullable=True)  # YouTube URL if applicable
+    source_url = Column(String(500), nullable=True, index=True)  # YouTube URL if applicable
     title = Column(String(500), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
     
     # Relationships
-    transcript = relationship("Transcript", back_populates="media", uselist=False)
+    transcript = relationship("Transcript", back_populates="media", uselist=False, cascade="all, delete-orphan")

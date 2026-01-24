@@ -50,3 +50,8 @@ backend/uploads/
 backend/downloads/
 backend/*.db
 *.log
+*.txt
+backend/test_output.txt
+backend/test_full_output.log
+backend/user_settings.json
+backend/debug_engine.py

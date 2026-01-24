@@ -1,10 +1,7 @@
-/**
- * Media input component for YouTube URLs and file uploads.
- */
-
 import React, { useState, useRef, useCallback } from 'react';
 import { api } from '../services/api';
 import { MediaData, TranscriptData } from '../types';
+import { Youtube, Upload, Loader2, Sparkles } from 'lucide-react';
 
 interface MediaInputProps {
     onMediaLoaded: (media: MediaData) => void;
@@ -24,57 +21,22 @@ function MediaInput({
     const [youtubeUrl, setYoutubeUrl] = useState('');
     const [statusMessage, setStatusMessage] = useState('');
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
-
-    const pollTranscriptStatus = useCallback(async (mediaId: number) => {
-        try {
-            const transcript = await api.getTranscriptByMedia(mediaId);
-
-            if (transcript.status === 'completed') {
-                if (pollIntervalRef.current) {
-                    clearInterval(pollIntervalRef.current);
-                    pollIntervalRef.current = null;
-                }
-                setStatusMessage('');
-                setIsLoading(false);
-                onTranscriptLoaded(transcript as TranscriptData);
-            } else if (transcript.status === 'failed') {
-                if (pollIntervalRef.current) {
-                    clearInterval(pollIntervalRef.current);
-                    pollIntervalRef.current = null;
-                }
-                setStatusMessage('');
-                setIsLoading(false);
-                onError(transcript.error_message || 'Transcription failed');
-            } else {
-                setStatusMessage(`Transcribing... (${transcript.status})`);
-            }
-        } catch (err) {
-            // Transcript might not exist yet, keep polling
-            setStatusMessage('Waiting for transcription to start...');
-        }
-    }, [onTranscriptLoaded, onError, setIsLoading]);
 
     const handleYouTubeSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-
         if (!youtubeUrl.trim()) {
             onError('Please enter a YouTube URL');
             return;
         }
 
         setIsLoading(true);
-        setStatusMessage('Fetching video info...');
+        setStatusMessage('Reading YouTube data...');
 
         try {
-            // Get video info first
             const info = await api.getYouTubeInfo(youtubeUrl);
             setStatusMessage(`Downloading: ${info.title}...`);
-
-            // Download and start transcription
             const result = await api.downloadYouTube(youtubeUrl, true);
 
-            // Create media data
             const media: MediaData = {
                 id: result.media_id,
                 filename: result.filename,
@@ -86,17 +48,12 @@ function MediaInput({
             };
 
             onMediaLoaded(media);
-            setStatusMessage('Transcribing audio...');
+            // Polling is now handled by the parent component via useTranscriptPoller
 
-            // Start polling for transcript status
-            pollIntervalRef.current = setInterval(() => {
-                pollTranscriptStatus(result.media_id);
-            }, 2000);
-
-        } catch (err) {
+        } catch (err: any) {
             setStatusMessage('');
             setIsLoading(false);
-            onError(err instanceof Error ? err.message : 'Failed to process YouTube URL');
+            onError(err.message || 'Failed to process YouTube URL');
         }
     };
 
@@ -108,10 +65,7 @@ function MediaInput({
         setStatusMessage(`Uploading: ${file.name}...`);
 
         try {
-            // Upload file
             const result = await api.uploadMedia(file);
-
-            // Create media data
             const media: MediaData = {
                 id: result.id,
                 filename: result.filename,
@@ -122,79 +76,81 @@ function MediaInput({
                 streamUrl: api.getMediaStreamUrl(result.id),
             };
 
+            // Polling is now handled by the parent component via useTranscriptPoller
+
             onMediaLoaded(media);
-            setStatusMessage('Starting transcription...');
 
-            // Start transcription
-            await api.startTranscription(result.id);
-
-            // Start polling for transcript status
-            pollIntervalRef.current = setInterval(() => {
-                pollTranscriptStatus(result.id);
-            }, 2000);
-
-        } catch (err) {
+        } catch (err: any) {
             setStatusMessage('');
             setIsLoading(false);
-            onError(err instanceof Error ? err.message : 'Failed to upload file');
+            onError(err.message || 'Failed to upload file');
         }
 
-        // Reset file input
         if (fileInputRef.current) {
             fileInputRef.current.value = '';
         }
     };
 
     return (
-        <div className="media-input">
-            {/* YouTube URL Input */}
-            <form onSubmit={handleYouTubeSubmit} className="youtube-form">
-                <div className="input-group">
-                    <span className="input-icon">🎬</span>
-                    <input
-                        type="text"
-                        value={youtubeUrl}
-                        onChange={(e) => setYoutubeUrl(e.target.value)}
-                        placeholder="Paste YouTube URL here..."
-                        className="url-input"
-                        disabled={isLoading}
-                    />
-                    <button type="submit" className="btn btn-primary" disabled={isLoading}>
-                        {isLoading ? 'Processing...' : 'Transcribe'}
-                    </button>
+        <div className="space-y-6">
+            {/* YouTube Section */}
+            <form onSubmit={handleYouTubeSubmit} className="relative group">
+                <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-neutral-400 group-focus-within:text-black dark:group-focus-within:text-white transition-colors">
+                    <Youtube className="w-5 h-5" />
                 </div>
+                <input
+                    type="text"
+                    value={youtubeUrl}
+                    onChange={(e) => setYoutubeUrl(e.target.value)}
+                    placeholder="YouTube URL..."
+                    className="w-full pl-12 pr-32 py-4 bg-neutral-100 dark:bg-neutral-800 border-none rounded-2xl focus:ring-2 focus:ring-black dark:focus:ring-white transition-all outline-none text-sm"
+                    disabled={isLoading}
+                />
+                <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="absolute right-2 inset-y-2 px-6 bg-black dark:bg-white text-white dark:text-black rounded-xl text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+                >
+                    {isLoading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Transcribe'}
+                </button>
             </form>
 
-            {/* Divider */}
-            <div className="divider">
-                <span>or</span>
+            <div className="relative flex items-center justify-center py-2">
+                <div className="w-full border-t border-neutral-100 dark:border-neutral-800" />
+                <span className="absolute bg-white dark:bg-neutral-900 px-4 text-[10px] font-bold uppercase tracking-widest text-neutral-400">or</span>
             </div>
 
-            {/* File Upload */}
-            <div className="file-upload">
+            {/* File Upload Section */}
+            <div className="relative group">
                 <input
                     ref={fileInputRef}
                     type="file"
                     accept=".mp3,.mp4,.wav,.webm,.m4a,.mkv"
                     onChange={handleFileUpload}
-                    className="file-input"
+                    className="hidden"
                     id="file-upload"
                     disabled={isLoading}
                 />
-                <label htmlFor="file-upload" className="file-label">
-                    <span className="upload-icon">📁</span>
-                    <span className="upload-text">
-                        {isLoading ? 'Processing...' : 'Upload Video/Audio File'}
-                    </span>
-                    <span className="upload-hint">MP4, MP3, WAV, WebM, M4A, MKV</span>
+                <label
+                    htmlFor="file-upload"
+                    className={`flex flex-col items-center justify-center p-8 border-2 border-dashed border-neutral-200 dark:border-neutral-800 rounded-2xl cursor-pointer hover:border-black dark:hover:border-white transition-all ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                    <div className="p-4 rounded-full bg-neutral-100 dark:bg-neutral-800 mb-4 group-hover:scale-110 transition-transform">
+                        <Upload className="w-6 h-6 text-neutral-500" />
+                    </div>
+                    <span className="text-sm font-medium">Local Video or Audio</span>
+                    <span className="text-xs text-neutral-400 mt-1 uppercase tracking-tighter">MP4, MP3, MKV, WAV</span>
                 </label>
             </div>
 
-            {/* Status Message */}
+            {/* AI Status Banner */}
             {statusMessage && (
-                <div className="status-message">
-                    <span className="spinner"></span>
-                    {statusMessage}
+                <div className="flex items-center gap-3 p-4 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-100 dark:border-neutral-800 animate-in slide-in-from-bottom-2 duration-300">
+                    <Loader2 className="w-4 h-4 text-neutral-400 animate-spin" />
+                    <span className="text-sm font-medium text-neutral-600 dark:text-neutral-300 tracking-tight">
+                        {statusMessage}
+                    </span>
+                    <Sparkles className="w-3 h-3 text-emerald-500 animate-pulse ml-auto" />
                 </div>
             )}
         </div>

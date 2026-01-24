@@ -11,7 +11,7 @@ class ApiClient {
         this.baseUrl = baseUrl;
     }
 
-    private async request<T>(
+    async request<T>(
         endpoint: string,
         options: RequestInit = {}
     ): Promise<T> {
@@ -146,6 +146,38 @@ class ApiClient {
             status: string;
         }>(`/transcripts/media/${mediaId}/transcribe`, {
             method: 'POST',
+        });
+    }
+
+    async deleteMedia(mediaId: number) {
+        return this.request<{ message: string }>(`/media/${mediaId}`, {
+            method: 'DELETE',
+        });
+    }
+
+    // System endpoints
+    async getSystemSpecs() {
+        return this.request<{
+            cpu: string;
+            gpu: string;
+            os: string;
+            arch: string;
+        }>('/system/specs');
+    }
+
+    async getConfig() {
+        return this.request<{
+            whisper_model: string;
+        }>('/system/config');
+    }
+
+    async updateConfig(config: { whisper_model: string }) {
+        return this.request<{
+            status: string;
+            message: string;
+        }>('/system/config', {
+            method: 'POST',
+            body: JSON.stringify(config),
         });
     }
 }

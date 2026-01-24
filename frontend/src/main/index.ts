@@ -61,7 +61,7 @@ function startBackend(): void {
     const backendPath = path.join(process.resourcesPath, 'backend');
     const pythonPath = path.join(backendPath, 'venv', 'Scripts', 'python.exe');
 
-    backendProcess = spawn(pythonPath, ['-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', '8000'], {
+    backendProcess = spawn(pythonPath, ['-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', '8081'], {
         cwd: backendPath,
         env: { ...process.env, PYTHONUNBUFFERED: '1' },
     });
