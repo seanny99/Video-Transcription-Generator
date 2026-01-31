@@ -134,17 +134,47 @@ class YouTubeService:
                     'preferredcodec': 'mp3',
                     'preferredquality': '192',
                 }],
+                # Speed up audio download
+                'concurrent_fragment_downloads': 4,
             })
         else:
-            ydl_opts['format'] = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
+            # Optimize: Limit to 1080p to avoid massive 4K downloads which kill speed
+            # Also enable concurrent fragment downloading
+            ydl_opts.update({
+                'format': 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+                'concurrent_fragment_downloads': 4,
+            })
         
         if progress_callback:
             def progress_hook(d):
                 if d['status'] == 'downloading':
-                    progress = d.get('_percent_str', 'N/A')
-                    progress_callback({'status': 'downloading', 'progress': progress})
+                    # Extract raw values
+                    progress_float = float(d.get('_percent_str', '0%').replace('%', ''))
+                    speed = d.get('_speed_str', '')
+                    eta = d.get('_eta_str', '')
+                    
+                    # Format status string: "45% (2.5MB/s ETA 00:15)"
+                    status_parts = []
+                    if speed and speed != 'N/A':
+                        status_parts.append(speed)
+                    if eta and eta != 'N/A':
+                        status_parts.append(f"ETA {eta}")
+                    
+                    details = f" ({', '.join(status_parts)})" if status_parts else ""
+                    
+                    progress_callback({
+                        'status': 'downloading',
+                        'progress': progress_float,
+                        'message': f"{d.get('_percent_str', '0%')}{details}",
+                        'eta': eta
+                    })
                 elif d['status'] == 'finished':
-                    progress_callback({'status': 'finished'})
+                    progress_callback({
+                        'status': 'finished',
+                        'progress': 100.0,
+                        'message': '100% (Complete)',
+                        'eta': '00:00'
+                    })
             
             ydl_opts['progress_hooks'] = [progress_hook]
         

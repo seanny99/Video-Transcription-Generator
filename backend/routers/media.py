@@ -2,6 +2,7 @@
 Media file upload and retrieval endpoints.
 """
 
+import logging
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +13,7 @@ from models import get_db, MediaFile, MediaSource
 from services.file_service import FileService
 from utils.exceptions import NotFoundError, ValidationError, ProcessingError
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 file_service = FileService()
 
@@ -80,7 +82,7 @@ async def get_media(
         "media_type": media.media_type,
         "source": media.source.value,
         "title": media.title,
-        "created_at": media.created_at.isoformat(),
+        "created_at": media.created_at.isoformat() + "Z",
     }
 
 
@@ -96,14 +98,21 @@ async def stream_media(
     if not media:
         raise NotFoundError("Media not found")
     
+    # Validate file existence
     file_path = Path(media.file_path)
-    if not file_path.exists():
-        raise NotFoundError("Media file not found on disk")
-    
+    if not media.file_path or not file_path.is_file():
+        # Clean up database if file is missing (self-healing)
+        # But if it's downloading, we shouldn't delete it.
+        # Check status? For now just 404.
+        raise HTTPException(
+            status_code=404, 
+            detail="Media file not found on disk"
+        )
+        
     return FileResponse(
-        file_path,
+        path=file_path,
         media_type=media.media_type,
-        filename=media.original_filename
+        filename=media.filename
     )
 
 

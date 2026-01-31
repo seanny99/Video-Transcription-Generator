@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from typing import Dict, Any
@@ -6,6 +7,7 @@ from services.system_service import system_service
 from engine.transcription_manager import TranscriptionManager
 from utils.exceptions import ProcessingError
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 class ConfigUpdate(BaseModel):
@@ -28,6 +30,7 @@ async def update_config(config: ConfigUpdate):
     """
     try:
         # Save to disk
+        logger.info(f"Updating system config: {config.whisper_model}")
         system_service.save_settings(config.model_dump())
         
         # Trigger model reload if model changed

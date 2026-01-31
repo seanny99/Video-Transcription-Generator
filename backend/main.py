@@ -171,7 +171,8 @@ async def process_transcription_job(job: TranscriptionJob):
                 logger.info(f"Processing chunk {chunk.index + 1}/{len(chunks)}")
                 
                 # Transcribe chunk
-                chunk_segments = await asyncio.get_event_loop().run_in_executor(
+                # Returns (segments, detected_language)
+                chunk_segments, detected_lang = await asyncio.get_event_loop().run_in_executor(
                     None,
                     lambda c=chunk: manager.transcribe_chunk(
                         c.path,
@@ -179,6 +180,12 @@ async def process_transcription_job(job: TranscriptionJob):
                         language=job.language
                     )
                 )
+
+                # OPTIMIZATION: If language wasn't set, use the one detected from first chunk
+                # for all subsequent chunks to avoid re-running detection every time.
+                if not job.language and detected_lang:
+                    job.language = detected_lang
+                    logger.info(f"Language detected as '{detected_lang}'. locking for remaining chunks.")
                 
                 # Check for cancellation after heavy processing
                 await db.refresh(transcript)
@@ -235,18 +242,25 @@ async def process_transcription_job(job: TranscriptionJob):
             
         except Exception as e:
             logger.error(f"Transcription failed: media_id={job.media_id}, error={e}")
-            # Mark as failed but preserve progress
-            try:
-                result = await db.execute(
-                    select(Transcript).where(Transcript.media_id == job.media_id)
-                )
-                transcript = result.scalar_one_or_none()
-                if transcript:
-                    transcript.status = TranscriptionStatus.FAILED
-                    transcript.error_message = f"{str(e)} (Progress: chunk {transcript.last_processed_chunk}/{transcript.total_chunks or '?'})"
-                    await db.commit()
-            except Exception:
-                pass
+            await handle_job_failure(job, str(e))
+
+
+async def handle_job_failure(job: TranscriptionJob, error: str):
+    """Handle job failures by updating DB status."""
+    from models.transcript import Transcript, TranscriptionStatus
+    async with async_session() as db:
+        try:
+            result = await db.execute(
+                select(Transcript).where(Transcript.media_id == job.media_id)
+            )
+            transcript = result.scalar_one_or_none()
+            if transcript:
+                transcript.status = TranscriptionStatus.FAILED
+                transcript.error_message = f"Job Interrupted: {error}"
+                await db.commit()
+                logger.info(f"Updated status to FAILED for media_id={job.media_id}")
+        except Exception as db_err:
+            logger.error(f"Failed to update error status in DB: {db_err}")
 
 
 
@@ -262,9 +276,17 @@ async def lifespan(app: FastAPI):
     # Initialize database
     await init_db()
     
+    # Load User Settings (Apply preferences like Model)
+    from services.system_service import system_service
+    user_config = system_service.get_settings()
+    if "whisper_model" in user_config:
+        settings.whisper_model = user_config["whisper_model"]
+        logger.info(f"Loaded user preference: Model = {settings.whisper_model}")
+    
     # Set up job queue
     queue = JobQueue.get_instance()
     queue.set_processor(process_transcription_job)
+    queue.set_on_failure(handle_job_failure)
     
     # Reconcile any stuck jobs from previous crash
     await reconcile_stuck_jobs()
@@ -272,8 +294,8 @@ async def lifespan(app: FastAPI):
     # Start the worker
     await queue.start_worker()
     
-    # Optionally preload model (uncomment for faster first request)
-    # TranscriptionManager.get_instance().preload_model()
+    # Preload model for faster first request (User has 32GB RAM, so this is safe/good)
+    TranscriptionManager.get_instance().preload_model()
     
     logger.info("Application ready")
     
@@ -289,7 +311,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.app_name,
     description="Video/Audio transcription service with YouTube support",
-    version="4.0.0",
+    version="4.3.14",
     lifespan=lifespan
 )
 
@@ -301,6 +323,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Request logging middleware for debugging
+@app.middleware("http")
+async def log_requests(request, call_next):
+    logger.info(f"Incoming request: {request.method} {request.url.path}")
+    response = await call_next(request)
+    logger.info(f"Response: {response.status_code}")
+    return response
 
 
 @app.exception_handler(AppError)
@@ -320,7 +350,7 @@ app.include_router(youtube.router, prefix="/api/youtube", tags=["YouTube"])
 app.include_router(system.router, prefix="/api/system", tags=["System"])
 
 
-@app.get("/health")
+@app.get("/api/health")
 async def health_check():
     """Health check endpoint."""
     from engine.job_queue import JobQueue
@@ -347,11 +377,29 @@ def find_available_port(host: str, start_port: int, max_attempts: int = 10) -> i
 
 
 if __name__ == "__main__":
-    import uvicorn
+    import multiprocessing
     import sys
+    import os
     
-    # Try to find an available port starting from settings.port
-    final_port = find_available_port(settings.host, settings.port)
+    # Patch for WinError 87 in PyInstaller
+    try:
+        multiprocessing.freeze_support()
+    except OSError:
+        # If the child process crashes during handshake, die silently
+        # This prevents the "WinError 87" traceback from polluting logs
+        sys.exit(1)
+    
+    import uvicorn
+    
+    # Honor environment variable PORT strictly if provided (by Electron)
+    is_port_forced = "PORT" in os.environ
+    
+    if is_port_forced:
+        final_port = settings.port
+        logger.info(f"Using forced port from environment: {final_port}")
+    else:
+        # Try to find an available port starting from settings.port
+        final_port = find_available_port(settings.host, settings.port)
     
     if final_port == -1:
         logger.critical(f"FATAL: Could not find any available ports starting from {settings.port}.")
@@ -360,14 +408,14 @@ if __name__ == "__main__":
     # Update settings with the final port
     settings.port = final_port
     
-    # Write the selected port to a discovery file for the frontend
+    # Write the selected port to a discovery file for the frontend (as backup)
     port_file = settings.base_dir / "backend_port.txt"
     try:
         port_file.write_text(str(final_port))
-        logger.info(f"Port discovery file created at {port_file}: {final_port}")
-    except Exception as e:
-        logger.error(f"Failed to create port discovery file: {e}")
+    except Exception:
+        pass
 
     logger.info(f"Starting server on {settings.host}:{settings.port}")
-    uvicorn.run(app, host=settings.host, port=settings.port)
+    # Force 1 worker to prevent uvicorn from spawning partial checks
+    uvicorn.run(app, host=settings.host, port=settings.port, workers=1, loop="asyncio")
 

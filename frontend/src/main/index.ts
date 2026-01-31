@@ -12,20 +12,7 @@ let mainWindow: BrowserWindow | null = null;
 let backendProcess: ChildProcess | null = null;
 let backendPort = 8081;
 
-const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
-
-async function findPort(startPort: number): Promise<number> {
-    return new Promise((resolve) => {
-        const server = net.createServer();
-        server.listen(startPort, '127.0.0.1', () => {
-            const { port } = server.address() as net.AddressInfo;
-            server.close(() => resolve(port));
-        });
-        server.on('error', () => {
-            resolve(findPort(startPort + 1));
-        });
-    });
-}
+const isDev = process.env.NODE_ENV === 'development' || (process.env.NODE_ENV !== 'production' && !app.isPackaged);
 
 function createWindow(): void {
     mainWindow = new BrowserWindow({
@@ -62,41 +49,85 @@ function createWindow(): void {
         return { action: 'deny' };
     });
 
+    // Pipe renderer logs to terminal
+    mainWindow.webContents.on('did-finish-load', () => {
+        mainWindow?.webContents.executeJavaScript('console.log("Renderer loaded:", window.location.href)');
+    });
+
+    mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+        const levels = ['DEBUG', 'INFO', 'WARN', 'ERROR'];
+        console.log(`[Renderer ${levels[level] || 'LOG'}] ${message} (${path.basename(sourceId)}:${line})`);
+    });
+
     mainWindow.on('closed', () => {
         mainWindow = null;
     });
 }
 
-function startBackend(): void {
-    // In development, assume backend is started separately
-    if (isDev) {
-        console.log('Development mode: Backend should be started separately');
-        return;
-    }
+function startBackend(): Promise<number> {
+    return new Promise((resolve, reject) => {
+        // In development, assume backend is started separately on 8081
+        if (isDev) {
+            console.log('Development mode: Backend should be started separately');
+            resolve(8081);
+            return;
+        }
 
-    // In production, start the Python backend executable
-    const backendPath = path.join(process.resourcesPath, 'backend');
-    const exePath = path.join(backendPath, 'backend.exe');
+        // In production, start the Python backend executable
+        const backendPath = app.isPackaged
+            ? path.join(process.resourcesPath, 'backend')
+            : path.join(__dirname, '../../../backend/dist');
+        const exePath = path.join(backendPath, 'backend.exe');
 
-    backendProcess = spawn(exePath, [], {
-        cwd: backendPath,
-        env: {
-            ...process.env,
-            PYTHONUNBUFFERED: '1',
-            PORT: backendPort.toString()
-        },
-    });
+        console.log('Starting backend with dynamic port allocation...');
 
-    backendProcess.stdout?.on('data', (data) => {
-        console.log(`Backend: ${data}`);
-    });
+        // Pass PORT=0 to let OS assign a random free port
+        backendProcess = spawn(exePath, [], {
+            cwd: backendPath,
+            env: {
+                ...process.env,
+                PYTHONUNBUFFERED: '1',
+                PORT: '0'
+            },
+        });
 
-    backendProcess.stderr?.on('data', (data) => {
-        console.error(`Backend Error: ${data}`);
-    });
+        let portFound = false;
 
-    backendProcess.on('close', (code) => {
-        console.log(`Backend exited with code ${code}`);
+        const handleOutput = (data: string | Buffer) => {
+            const output = data.toString();
+            console.log(`Backend: ${output}`);
+
+            // Look for Uvicorn binding message
+            // "Uvicorn running on http://127.0.0.1:54321"
+            if (!portFound) {
+                const match = output.match(/running on http:\/\/127\.0\.0\.1:(\d+)/);
+                if (match) {
+                    const port = parseInt(match[1]);
+                    console.log(`Backend bound to port: ${port}`);
+                    portFound = true;
+                    resolve(port);
+                }
+            }
+        };
+
+        backendProcess.stdout?.on('data', handleOutput);
+
+        // IMPORTANT: Uvicorn often logs info to stderr, so we must parse it too
+        backendProcess.stderr?.on('data', (data) => {
+            handleOutput(data);
+        });
+
+        backendProcess.on('close', (code) => {
+            console.log(`Backend exited with code ${code}`);
+            if (!portFound) {
+                reject(new Error(`Backend exited before binding port (code ${code})`));
+            }
+        });
+
+        backendProcess.on('error', (err) => {
+            console.error('Failed to start backend process:', err);
+            reject(err);
+        });
     });
 }
 
@@ -109,11 +140,17 @@ function stopBackend(): void {
 
 // App lifecycle
 app.whenReady().then(async () => {
-    if (!isDev) {
-        backendPort = await findPort(8081);
+    try {
+        if (!isDev) {
+            backendPort = await startBackend();
+        } else {
+            await startBackend(); // Just for logging in dev
+        }
+        createWindow();
+    } catch (err) {
+        console.error('Fatal: Failed to start backend:', err);
+        app.quit();
     }
-    startBackend();
-    createWindow();
 
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) {
@@ -121,6 +158,7 @@ app.whenReady().then(async () => {
         }
     });
 });
+
 
 app.on('window-all-closed', () => {
     stopBackend();

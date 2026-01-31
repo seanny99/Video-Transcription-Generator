@@ -2,8 +2,11 @@ import { MediaData, TranscriptData, YouTubeInfo, TranscriptionStatus, ApiError }
 
 const getApiBase = () => {
     const params = new URLSearchParams(window.location.search);
-    const port = params.get('port') || '8081';
-    return `http://127.0.0.1:${port}/api`;
+    console.log(`[API Config] Raw Search: "${window.location.search}"`);
+    const port = params.get('port') || '55666';
+    const base = `http://127.0.0.1:${port}/api`;
+    console.log(`[API Config] Constructed Base: ${base}`);
+    return base;
 };
 
 const API_BASE = getApiBase();
@@ -20,25 +23,32 @@ class ApiClient {
         options: RequestInit = {}
     ): Promise<T> {
         const url = `${this.baseUrl}${endpoint}`;
+        console.log(`[API Request] ${url}`, options);
 
-        const response = await fetch(url, {
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers,
-            },
-        });
+        try {
+            const response = await fetch(url, {
+                ...options,
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...options.headers,
+                },
+            });
 
-        if (!response.ok) {
-            const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
-            throw new ApiError(
-                error.detail || `Request failed: ${response.status}`,
-                error.detail,
-                error.type
-            );
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
+                console.error(`[API Error Response] ${url}: ${response.status}`, error);
+                throw new ApiError(
+                    error.detail || `Request failed: ${response.status}`,
+                    error.detail,
+                    error.type
+                );
+            }
+
+            return response.json();
+        } catch (err) {
+            console.error(`[API Network/Fetch Error] ${url}:`, err);
+            throw err;
         }
-
-        return response.json();
     }
 
     // YouTube endpoints
@@ -97,10 +107,6 @@ class ApiClient {
         return `${this.baseUrl}/media/${mediaId}/stream`;
     }
 
-    async getTranscript(transcriptId: number): Promise<TranscriptData> {
-        return this.request<TranscriptData>(`/transcripts/${transcriptId}`);
-    }
-
     async getTranscriptByMedia(mediaId: number): Promise<TranscriptData> {
         return this.request<TranscriptData>(`/transcripts/media/${mediaId}`);
     }
@@ -148,6 +154,29 @@ class ApiClient {
             method: 'POST',
             body: JSON.stringify(config),
         });
+    }
+
+    async checkHealth() {
+        return this.request<{ status: string; queue_size: number }>('/health');
+    }
+
+    /**
+     * Wait for backend to become ready with retries.
+     */
+    async waitForBackend(maxRetries = 10, interval = 1000): Promise<boolean> {
+        for (let i = 0; i < maxRetries; i++) {
+            try {
+                const health = await this.checkHealth();
+                if (health.status === 'healthy') {
+                    console.log('Backend connection established');
+                    return true;
+                }
+            } catch (e) {
+                console.log(`Waiting for backend... attempt ${i + 1}/${maxRetries}`);
+                await new Promise(resolve => setTimeout(resolve, interval));
+            }
+        }
+        return false;
     }
 }
 

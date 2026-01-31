@@ -47,8 +47,8 @@ class Settings(BaseSettings):
     whisper_model: str = "distil-large-v3"
     
     # Server
-    host: str = "127.0.0.1" # Standardized to localhost for safety
-    port: int = 8081
+    host: str = "127.0.0.1" 
+    port: int = int(os.environ.get("PORT", 55666))
     cors_origins: list[str] = ["*"]
     
     # File limits

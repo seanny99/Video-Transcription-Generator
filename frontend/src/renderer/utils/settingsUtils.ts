@@ -1,19 +1,21 @@
 /**
  * Logic to recommend a whisper model based on hardware specs.
  */
-export const getRecommendedModel = (specs: { gpu: string, vram: number, ram: number, cores: number } | null): string => {
+export const getRecommendedModel = (specs: { gpu: string, vram: number, ram: number, cores: number, threads?: number } | null): string => {
     if (!specs) return 'distil-large-v3';
 
     const hasNvidia = specs.gpu.toLowerCase().includes('nvidia');
     const vram = specs.vram || 0;
     const ram = specs.ram || 0;
     const cores = specs.cores || 4;
+    const threads = specs.threads || cores; // Fallback to cores if threads missing
 
     // 1. High-end GPU (Big VRAM) -> Large-v3
     if (hasNvidia && vram >= 6) return 'large-v3';
 
-    // 2. Mid-range GPU or Strong CPU -> Distil-Large-v3
-    if ((hasNvidia && vram >= 2) || (ram >= 16 && cores >= 8)) return 'distil-large-v3';
+    // 2. Mid-range GPU or Strong CPU (8+ Cores OR 12+ Threads) -> Distil-Large-v3
+    // Ryzen 5 5600 (6 Core/12 Thread) handles Distil-Large easily
+    if ((hasNvidia && vram >= 2) || (ram >= 16 && (cores >= 8 || threads >= 12))) return 'distil-large-v3';
 
     // 3. Decent RAM -> Medium
     if (ram >= 12) return 'medium';

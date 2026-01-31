@@ -17,7 +17,7 @@ async def test_health_check(client: AsyncClient):
 async def test_youtube_info(client: AsyncClient, mock_external_services):
     """Test fetching YouTube video metadata."""
     url = "https://www.youtube.com/watch?v=test"
-    response = await client.post("/api/youtube/info", json={"url": url})
+    response = await client.post("/youtube/info", json={"url": url})
     
     assert response.status_code == 200
     data = response.json()
@@ -30,7 +30,7 @@ async def test_media_upload(client: AsyncClient, temp_dirs):
     # Create a dummy file
     files = {"file": ("test.mp3", b"dummy audio content", "audio/mpeg")}
     
-    response = await client.post("/api/media/upload", files=files)
+    response = await client.post("/media/upload", files=files)
     
     assert response.status_code == 200, f"Upload failed: {response.text}"
     data = response.json()
@@ -49,12 +49,12 @@ async def test_transcription_lifecycle(client: AsyncClient, temp_dirs, mock_exte
     """
     # 1. Upload
     files = {"file": ("speech.wav", b"dummy content", "audio/wav")}
-    upload_res = await client.post("/api/media/upload", files=files)
+    upload_res = await client.post("/media/upload", files=files)
     assert upload_res.status_code == 200
     media_id = upload_res.json()["id"]
     
     # 2. Start Transcription
-    start_res = await client.post(f"/api/transcripts/media/{media_id}/transcribe")
+    start_res = await client.post(f"/transcripts/media/{media_id}/transcribe")
     assert start_res.status_code == 200
     data = start_res.json()
     assert data["status"] == "pending"
@@ -62,12 +62,12 @@ async def test_transcription_lifecycle(client: AsyncClient, temp_dirs, mock_exte
     
     # 3. Check Status
     # Since we mocked the worker, it won't actually process, but we can check the initial state
-    status_res = await client.get(f"/api/transcripts/{transcript_id}/status")
+    status_res = await client.get(f"/transcripts/{transcript_id}/status")
     assert status_res.status_code == 200
     assert status_res.json()["status"] == "pending"
 
     # Verify generic transcript endpoint works
-    details_res = await client.get(f"/api/transcripts/{transcript_id}")
+    details_res = await client.get(f"/transcripts/{transcript_id}")
     assert details_res.status_code == 200
     assert details_res.json()["media_id"] == media_id
 
@@ -105,7 +105,7 @@ async def test_resume_functionality(client: AsyncClient, db_session, mock_extern
     
     # 2. Action: User clicks "Transcribe" (Retry)
     # The backend should detect existing record and Resume
-    response = await client.post(f"/api/transcripts/media/{media.id}/transcribe")
+    response = await client.post(f"/transcripts/media/{media.id}/transcribe")
     assert response.status_code == 200
     
     # 3. Verify: Status is PENDING (queued) and we didn't get a 409 Conflict
@@ -144,12 +144,12 @@ async def test_cancellation_flow(client: AsyncClient, db_session, mock_external_
     await db_session.refresh(transcript)
     
     # 2. Action: Call Cancel API
-    response = await client.post(f"/api/transcripts/{transcript.id}/cancel")
+    response = await client.post(f"/transcripts/{transcript.id}/cancel")
     assert response.status_code == 200
     assert response.json()["message"] == "Transcription canceled"
     
     # 3. Verify: Status update in DB
-    status_res = await client.get(f"/api/transcripts/{transcript.id}")
+    status_res = await client.get(f"/transcripts/{transcript.id}")
     assert status_res.status_code == 200
     data = status_res.json()
     assert "Canceled by user" in data["error_message"]

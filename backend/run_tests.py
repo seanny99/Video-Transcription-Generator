@@ -8,6 +8,6 @@ if __name__ == "__main__":
         sys.stderr = f
         print("Running tests programmatically...")
         sys.path.append(".")
-        ret = pytest.main(["-v", "tests/test_api_flow.py", "-s"])
+        ret = pytest.main(["-v", "tests/", "-s"])
         print(f"Pytest exited with code: {ret}")
         sys.exit(ret)

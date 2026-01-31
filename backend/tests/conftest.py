@@ -73,7 +73,7 @@ from httpx import AsyncClient, ASGITransport
 @pytest_asyncio.fixture(scope="function")
 async def client() -> AsyncGenerator[AsyncClient, None]:
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as c:
+    async with AsyncClient(transport=transport, base_url="http://test/api") as c:
         yield c
 
 # --- File System Mocking ---

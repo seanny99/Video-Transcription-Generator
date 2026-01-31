@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { TranscriptData, TranscriptionStatus } from '../types';
-import { Search, MessageSquareText, FileText, Loader2, Download, Copy, Clock, ToggleLeft, ToggleRight, Check, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Search, MessageSquareText, FileText, Loader2, Download, Copy, Clock, ToggleLeft, ToggleRight, Check, CheckCircle2, AlertCircle, RotateCw } from 'lucide-react';
 import { cn } from '../utils';
 import { formatTime, generateSrt, generateTxt, downloadFile } from '../utils/transcriptUtils';
 
@@ -9,6 +9,7 @@ interface TranscriptPanelProps {
     activeSegmentId: number | null;
     onSegmentClick: (time: number) => void;
     isLoading: boolean;
+    onRetry?: () => void;
 }
 
 function TranscriptPanel({
@@ -16,6 +17,7 @@ function TranscriptPanel({
     activeSegmentId,
     onSegmentClick,
     isLoading,
+    onRetry,
 }: TranscriptPanelProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const activeRef = useRef<HTMLDivElement>(null);
@@ -96,21 +98,55 @@ function TranscriptPanel({
                         <h2 className="font-bold">Transcript</h2>
                         {transcript && (
                             <div className="flex items-center gap-2">
-                                {transcript.status === TranscriptionStatus.Completed ? (
+                                {transcript.status === 'completed' ? (
                                     <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
                                         <CheckCircle2 className="w-3 h-3" />
                                         SUCCESS
                                     </span>
-                                ) : transcript.status === TranscriptionStatus.Processing ? (
+                                ) : transcript.status === 'processing' ? (
                                     <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/10 text-blue-500 border border-blue-500/20 animate-pulse">
                                         <Loader2 className="w-3 h-3 animate-spin" />
                                         PROCESSING
+                                        {transcript.total_chunks && transcript.last_processed_chunk ? (
+                                            <span className="opacity-75">
+                                                {Math.round((transcript.last_processed_chunk / transcript.total_chunks) * 100)}%
+                                                {transcript.estimated_seconds ? ` (${Math.ceil(transcript.estimated_seconds)}s left)` : ''}
+                                            </span>
+                                        ) : ''}
                                     </span>
-                                ) : transcript.status === TranscriptionStatus.Failed ? (
-                                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500/10 text-red-500 border border-red-500/20">
-                                        <AlertCircle className="w-3 h-3" />
-                                        FAILED
-                                    </span>
+                                ) : transcript.status === 'failed' ? (
+                                    <div className="flex items-center gap-2">
+                                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500/10 text-red-500 border border-red-500/20">
+                                            <AlertCircle className="w-3 h-3" />
+                                            FAILED
+                                        </span>
+                                        {onRetry && (
+                                            <button
+                                                onClick={onRetry}
+                                                className="p-1 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-md transition-colors"
+                                                title="Retry Transcription"
+                                            >
+                                                <RotateCw className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground" />
+                                            </button>
+                                        )}
+                                    </div>
+                                ) : transcript.status === 'downloading' ? (
+                                    <div className="flex items-center gap-2">
+                                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-500/10 text-sky-600 border border-sky-500/20 animate-pulse">
+                                            <Download className="w-3 h-3" />
+                                            DOWNLOADING
+                                            {/* We hijacked error_message to pass status details temporarily */}
+                                            {transcript.error_message && !transcript.error_message.includes('Failed') ? (
+                                                <span className="opacity-75 ml-1">
+                                                    {transcript.error_message}
+                                                </span>
+                                            ) : (
+                                                <span className="opacity-75 ml-1">
+                                                    {Math.round(transcript.download_progress || 0)}%
+                                                </span>
+                                            )}
+                                        </span>
+                                    </div>
                                 ) : (
                                     <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-zinc-500/10 text-zinc-500 border border-zinc-500/20">
                                         PENDING

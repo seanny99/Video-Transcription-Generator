@@ -114,51 +114,53 @@ class AudioChunker:
         total_duration = self.get_audio_duration(file_path)
         chunks: List[ChunkInfo] = []
         
-        chunk_index = 0
-        current_time = 0.0
+        last_chunk_path = os.path.join(media_chunk_dir, f"chunk_{int(total_duration // chunk_duration):04d}.wav")
         
-        while current_time < total_duration:
-            chunk_path = os.path.join(
-                media_chunk_dir, 
-                f"chunk_{chunk_index:04d}.wav"
+        # Use FFmpeg segment muxer to split in one pass (Order of magnitude faster)
+        output_pattern = os.path.join(media_chunk_dir, "chunk_%04d.wav")
+        
+        try:
+            logger.info(f"Splitting audio into chunks using fast segment muxer...")
+            subprocess.run(
+                [
+                    settings.ffmpeg_path,
+                    "-y",
+                    "-i", file_path,
+                    "-vn",  # No video
+                    "-ar", "16000",  # 16kHz sample rate (Whisper optimal)
+                    "-ac", "1",  # Mono
+                    "-c:a", "pcm_s16le",  # WAV format
+                    "-f", "segment",
+                    "-segment_time", str(chunk_duration),
+                    "-reset_timestamps", "1",
+                    output_pattern
+                ],
+                capture_output=True,
+                check=True
             )
-            
-            # Calculate actual duration for this chunk (last chunk may be shorter)
-            actual_duration = min(chunk_duration, total_duration - current_time)
-            
-            # Use ffmpeg to extract chunk as WAV (16kHz mono for Whisper)
-            try:
-                subprocess.run(
-                    [
-                        settings.ffmpeg_path,
-                        "-y",  # Overwrite output
-                        "-i", file_path,
-                        "-ss", str(current_time),
-                        "-t", str(chunk_duration),
-                        "-vn",  # No video
-                        "-ar", "16000",  # 16kHz sample rate (Whisper optimal)
-                        "-ac", "1",  # Mono
-                        "-c:a", "pcm_s16le",  # WAV format
-                        chunk_path
-                    ],
-                    capture_output=True,
-                    check=True
-                )
-            except subprocess.CalledProcessError as e:
-                logger.error(f"Failed to create chunk {chunk_index}: {e.stderr}")
-                raise ProcessingError(f"Failed to create chunk: {e.stderr}")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to split chunks: {e.stderr}")
+            raise ProcessingError(f"Failed to split chunks: {e.stderr}")
+
+        # Collect the created chunks
+        import glob
+        existing = sorted(glob.glob(os.path.join(media_chunk_dir, "chunk_*.wav")))
+        
+        chunks: List[ChunkInfo] = []
+        for i, path in enumerate(existing):
+            # Calculate start time based on index
+            start_t = i * chunk_duration
+            # Get actual duration of this chunk
+            dur = self.get_audio_duration(path)
             
             chunks.append(ChunkInfo(
-                index=chunk_index,
-                path=chunk_path,
-                start_time=current_time,
-                duration=actual_duration
+                index=i,
+                path=path,
+                start_time=start_t,
+                duration=dur
             ))
             
-            chunk_index += 1
-            current_time += chunk_duration
-        
-        logger.info(f"Split {file_path} into {len(chunks)} chunks")
+        logger.info(f"Split {file_path} into {len(chunks)} chunks (Fast Mode)")
         return chunks
     
     def get_existing_chunks(self, media_id: int) -> List[ChunkInfo]:

@@ -47,6 +47,13 @@ function App() {
     useEffect(() => {
         const fetchSystemInfo = async () => {
             try {
+                // Wait for backend to be ready (max 12s)
+                const isReady = await api.waitForBackend(15, 800);
+                if (!isReady) {
+                    console.error("Backend failed to respond after retries");
+                    return;
+                }
+
                 const specs = await api.getSystemSpecs();
                 setSystemSpecs(specs);
 
@@ -83,9 +90,9 @@ function App() {
         transcript,
         (updated) => {
             setTranscript(updated);
-            if (updated.status !== transcript?.status && (updated.status === TranscriptionStatus.Completed || updated.status === TranscriptionStatus.Failed)) {
+            if (updated.status !== transcript?.status && (updated.status === 'completed' || updated.status === 'failed')) {
                 setHistoryRefreshKey(prev => prev + 1);
-                if (updated.status === TranscriptionStatus.Completed) {
+                if (updated.status === 'completed') {
                     addToast('Transcription completed successfully', 'success');
                 } else {
                     addToast('Transcription failed', 'error');
@@ -248,6 +255,21 @@ function App() {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, []);
 
+    const handleRetry = useCallback(async () => {
+        if (!media) return;
+        try {
+            addToast('Retrying transcription...', 'info');
+            await api.startTranscription(media.id);
+            // Update local state to pending
+            const pendingTranscript = await api.getTranscriptByMedia(media.id);
+            setTranscript(pendingTranscript);
+            setHistoryRefreshKey(prev => prev + 1);
+        } catch (err: any) {
+            console.error("Retry failed:", err);
+            addToast(err.message || 'Retry failed', 'error');
+        }
+    }, [media]);
+
     return (
         <div className={cn(
             "flex h-screen w-full overflow-hidden font-sans selection:bg-primary/10 transition-colors duration-700 relative",
@@ -314,7 +336,7 @@ function App() {
                 </div>
 
                 <div className="mt-auto pb-6">
-                    <p className="text-[10px] text-zinc-500 font-medium rotate-0 opacity-40">v4.0.0</p>
+                    <p className="text-[10px] text-zinc-500 font-medium rotate-0 opacity-40">v4.3.14</p>
                 </div>
             </nav>
 
@@ -364,6 +386,7 @@ function App() {
                                     activeSegmentId={activeSegmentId}
                                     onSegmentClick={handleSegmentClick}
                                     isLoading={isLoading}
+                                    onRetry={handleRetry}
                                 />
                             </div>
                         </div>

@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useClickOutside } from '../hooks/useClickOutside';
-import { Clock, Loader2, AlertCircle, Trash2, Search, X, FileAudio, FileVideo, CheckCircle2 } from 'lucide-react';
+import { Trash2, Clock, CheckCircle2, AlertCircle, Loader2, Play, FileText, Search, X, Download, FileAudio, FileVideo } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../services/api';
 import { formatDistanceToNow, isToday, isYesterday, isThisWeek } from 'date-fns';
 import { cn } from '../utils';
+import { TranscriptionStatus } from '../types';
 
 interface HistorySidebarProps {
     onSelect?: (mediaId: number) => void;
@@ -17,11 +18,30 @@ export const HistorySidebar = ({ onSelect, onDelete, refreshKey = 0, isOpen, onC
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
+    const [isServerOnline, setIsServerOnline] = useState<boolean | null>(null);
+    const [healthError, setHealthError] = useState<string | null>(null);
+
+    const checkHealth = async () => {
+        try {
+            await api.checkHealth();
+            console.log('[HistorySidebar] Backend is ONLINE');
+            setIsServerOnline(true);
+            setHealthError(null);
+        } catch (err: any) {
+            console.warn('[HistorySidebar] Backend check failed:', err);
+            setIsServerOnline(false);
+            setHealthError(err.message || 'Connection failed');
+        }
+    };
 
     const fetchHistory = async () => {
         try {
             setIsLoading(true);
-            const data = await api.request<any[]>('/transcripts/');
+            const endpoint = searchQuery.trim()
+                ? `/transcripts/?search=${encodeURIComponent(searchQuery)}`
+                : '/transcripts/';
+
+            const data = await api.request<any[]>(endpoint);
             // Sort by Date Descending
             const sorted = data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
             setHistory(sorted);
@@ -34,12 +54,25 @@ export const HistorySidebar = ({ onSelect, onDelete, refreshKey = 0, isOpen, onC
     };
 
     useEffect(() => {
-        if (isOpen) {
-            fetchHistory();
-        }
-        const interval = setInterval(fetchHistory, 60000);
-        return () => clearInterval(interval);
-    }, [refreshKey, isOpen]);
+        const initialize = async () => {
+            if (isOpen) {
+                const isReady = await api.waitForBackend(5, 500);
+                if (isReady) {
+                    setIsServerOnline(true);
+                    fetchHistory();
+                } else {
+                    setIsServerOnline(false);
+                    setError('Backend not available. Retrying...');
+                }
+            }
+        };
+
+        const timer = setTimeout(() => {
+            initialize();
+        }, 300); // 300ms debounce for search
+
+        return () => clearTimeout(timer);
+    }, [refreshKey, isOpen, searchQuery]); // Re-fetch when search changes
 
     const handleDelete = async (e: React.MouseEvent, mediaId: number) => {
         e.stopPropagation();
@@ -55,10 +88,6 @@ export const HistorySidebar = ({ onSelect, onDelete, refreshKey = 0, isOpen, onC
 
     // Grouping Logic
     const groupedHistory = useMemo(() => {
-        const filtered = history.filter(item =>
-            (item.media_title || '').toLowerCase().includes(searchQuery.toLowerCase())
-        );
-
         const groups: Record<string, any[]> = {
             'Today': [],
             'Yesterday': [],
@@ -66,7 +95,7 @@ export const HistorySidebar = ({ onSelect, onDelete, refreshKey = 0, isOpen, onC
             'Older': []
         };
 
-        filtered.forEach(item => {
+        history.forEach(item => {
             const date = new Date(item.created_at);
             if (isToday(date)) groups['Today'].push(item);
             else if (isYesterday(date)) groups['Yesterday'].push(item);
@@ -213,7 +242,6 @@ export const HistorySidebar = ({ onSelect, onDelete, refreshKey = 0, isOpen, onC
                                                         </h4>
 
                                                         <div className="flex items-center gap-2 text-[10px] text-muted-foreground leading-none">
-                                                            {/* Status */}
                                                             {item.status === 'completed' ? (
                                                                 <span className="flex items-center gap-1 text-emerald-500 font-medium">
                                                                     <CheckCircle2 className="w-3 h-3" />
@@ -223,6 +251,16 @@ export const HistorySidebar = ({ onSelect, onDelete, refreshKey = 0, isOpen, onC
                                                                 <span className="flex items-center gap-1 text-blue-500 font-medium animate-pulse">
                                                                     <Loader2 className="w-3 h-3 animate-spin" />
                                                                     <span>Processing</span>
+                                                                </span>
+                                                            ) : item.status === 'downloading' ? (
+                                                                <span className="flex items-center gap-1 text-sky-500 font-medium animate-pulse">
+                                                                    <Download className="w-3 h-3 animate-bounce" />
+                                                                    <span>Downloading</span>
+                                                                </span>
+                                                            ) : item.status === 'failed' ? (
+                                                                <span className="flex items-center gap-1 text-red-500 font-medium">
+                                                                    <AlertCircle className="w-3 h-3" />
+                                                                    <span>Failed</span>
                                                                 </span>
                                                             ) : (
                                                                 <span className="flex items-center gap-1 font-medium">
@@ -252,6 +290,24 @@ export const HistorySidebar = ({ onSelect, onDelete, refreshKey = 0, isOpen, onC
                             )
                         ))
                     )}
+                </div>
+
+                {/* Footer Status */}
+                <div className="p-4 border-t border-border bg-accent/5 flex items-center justify-between shrink-0">
+                    <div className="flex items-center gap-2">
+                        <div className={cn(
+                            "w-2 h-2 rounded-full",
+                            isServerOnline === true ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" :
+                                isServerOnline === false ? "bg-destructive shadow-[0_0_8px_rgba(239,68,68,0.5)]" :
+                                    "bg-muted-foreground animate-pulse"
+                        )} />
+                        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                            {isServerOnline === true ? "Backend Online" :
+                                isServerOnline === false ? "Backend Offline" :
+                                    "Connecting..."}
+                        </span>
+                    </div>
+                    <span className="text-[10px] text-zinc-500 font-mono">v4.3.14</span>
                 </div>
             </div>
         </>

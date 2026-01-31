@@ -45,6 +45,7 @@ class JobQueue:
         self._queue: asyncio.Queue[TranscriptionJob] = asyncio.Queue()
         self._worker_task: Optional[asyncio.Task] = None
         self._processor: Optional[Callable[[TranscriptionJob], Awaitable[None]]] = None
+        self._on_failure: Optional[Callable[[TranscriptionJob, str], Awaitable[None]]] = None
         self._running = False
         self._initialized = True
         self._cancelled_ids = set()
@@ -83,6 +84,10 @@ class JobQueue:
             processor: Async function that takes a TranscriptionJob
         """
         self._processor = processor
+    
+    def set_on_failure(self, on_failure: Callable[[TranscriptionJob, str], Awaitable[None]]) -> None:
+        """Set callback for job failures or skips."""
+        self._on_failure = on_failure
     
     async def enqueue(self, job: TranscriptionJob) -> None:
         """Add a job to the queue."""
@@ -136,6 +141,8 @@ class JobQueue:
                 # Check if cancelled while in queue
                 if self.is_cancelled(job.media_id):
                     logger.info(f"Skipping cancelled job: media_id={job.media_id}")
+                    if self._on_failure:
+                        await self._on_failure(job, "Cancelled before processing")
                     self.clear_cancelled(job.media_id)
                     self._queue.task_done()
                     self._current_job = None

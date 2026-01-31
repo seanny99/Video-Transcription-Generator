@@ -194,13 +194,6 @@ export const SettingsDrawer = ({
                         </CollapsibleSection>
                     </section>
                 </div>
-
-                {/* Footer */}
-                <div className="p-6 border-t border-border bg-accent/10">
-                    <p className="text-[10px] text-center text-muted-foreground font-medium uppercase tracking-widest">
-                        Transcribe AI v4.0.0
-                    </p>
-                </div>
             </div>
         </>
     );

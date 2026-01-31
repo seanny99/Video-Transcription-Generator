@@ -10,6 +10,18 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 
+# DEBUG: File Logger
+# We use a hardcoded path in AppData to ensure it writes even if config fails
+app_data = Path(os.environ.get('APPDATA', '.')) / "VideoTranscriptionGenerator"
+app_data.mkdir(parents=True, exist_ok=True)
+debug_log = app_data / "hardware_debug.log"
+
+def log_debug(msg):
+    try:
+        with open(debug_log, "a") as f:
+            f.write(f"{msg}\n")
+    except: pass
+
 class SystemService:
     """
     Service for partial hardware detection and configuration management.
@@ -18,8 +30,16 @@ class SystemService:
     SETTINGS_FILE = Path(settings.base_dir) / "user_settings.json"
     
     def __init__(self):
-        self._hardware_info = None
+        self._hardware_info = {
+            "cpu": platform.processor() or "Detecting...",
+            "gpu": "Detecting...",
+            "os": f"{platform.system()} {platform.release()}",
+            "arch": platform.machine(),
+            "ram": 0.0, "vram": 0.0, "cores": 0, "threads": 0
+        }
         self._ensure_settings_file()
+        import threading
+        threading.Thread(target=self._background_detection, daemon=True).start()
 
     def _ensure_settings_file(self):
         """Create settings file if not exists."""
@@ -29,165 +49,86 @@ class SystemService:
             }
             self.save_settings(default_settings)
 
-    def get_hardware_info(self) -> Dict[str, Any]:
-        """Detect CPU and GPU info."""
-        if self._hardware_info:
-            return self._hardware_info
-            
-        cpu_info = cpuinfo.get_cpu_info()
-        cpu_name = cpu_info.get('brand_raw', platform.processor())
-        
-        # Enhanced Hardware Detection
-        # 1. CPU Cores
+    def _background_detection(self):
+        """Perform hardware detection in background thread."""
+        log_debug("Starting background hardware detection...")
         try:
-            import psutil
-            cpu_cores = psutil.cpu_count(logical=False)
-            if not cpu_cores:
-                cpu_cores = psutil.cpu_count(logical=True)
-        except ImportError:
-            # Fallback for Windows without psutil
+            import cpuinfo
+            log_debug("cpuinfo imported")
+            # CPU Name (Brand Raw is usually best)
+            try: 
+                import subprocess
+                # Use standard Windows command to get CPU name safely
+                if platform.system() == "Windows":
+                    res = subprocess.check_output("wmic cpu get name /Value", shell=True, timeout=2).decode()
+                    for line in res.splitlines():
+                        if "=" in line:
+                            val = line.split("=")[1].strip()
+                            if val: 
+                                self._hardware_info["cpu"] = val
+                                log_debug(f"CPU Name (WMIC): {val}")
+                                break
+            except Exception as e:
+                log_debug(f"CPU WMI failed: {e}")
+            
+            # Psutil for RAM and CPU Cores (Robust)
+            try:
+                import psutil
+                log_debug("psutil imported")
+                self._hardware_info["ram"] = round(psutil.virtual_memory().total / (1024**3), 1)
+                self._hardware_info["cores"] = psutil.cpu_count(logical=False) or 4
+                self._hardware_info["threads"] = psutil.cpu_count(logical=True) or 4
+                log_debug(f"RAM: {self._hardware_info['ram']}, Cores: {self._hardware_info['cores']}")
+            except ImportError as e:
+                log_debug(f"psutil import failed: {e}")
+                logger.warning("psutil not installed, RAM/Core detection may be inaccurate")
+            except Exception as e:
+                log_debug(f"psutil logic failed: {e}")
+                logger.warning(f"psutil detection failed: {e}")
+
+            # Windows GPU Detection (Improved WMI)
             if platform.system() == "Windows":
                 try:
                     import subprocess
-                    # Use /Value for cleaner output "NumberOfCores=6"
-                    cmd = "wmic cpu get NumberOfCores /Value"
-                    result = subprocess.check_output(cmd, shell=True).decode().strip()
-                    
-                    found = False
-                    for line in result.splitlines():
-                        if "NumberOfCores" in line and "=" in line:
+                    # GPU Name: Get all controllers and pick the best one
+                    res = subprocess.check_output("wmic path win32_VideoController get name /Value", shell=True, timeout=5).decode()
+                    gpus = []
+                    for line in res.splitlines():
+                        if "=" in line:
                             val = line.split("=")[1].strip()
-                            if val.isdigit():
-                                cpu_cores = int(val)
-                                found = True
-                                break
+                            if val: gpus.append(val)
                     
-                    if not found:
-                         # Fallback if wmic gives output but parsing fails
-                         import multiprocessing
-                         cpu_cores = max(2, multiprocessing.cpu_count() // 2)
-                except Exception as e:
-                    logger.warning(f"Core detection failed: {e}")
-                    import multiprocessing
-                    # Fallback to logical/2 (Heuristic for HT/SMT) to avoid showing thread count
-                    cpu_cores = max(2, multiprocessing.cpu_count() // 2)
-            else:
-                import multiprocessing
-                cpu_cores = multiprocessing.cpu_count()
-
-        # 2. System RAM (Total Physical Memory)
-        ram_gb = 0.0
-        try:
-            if platform.system() == "Windows":
-                 # Use WMIC (more reliable than Powershell regarding headers/permissions)
-                import subprocess
-                cmd = "wmic computersystem get TotalPhysicalMemory"
-                result = subprocess.check_output(cmd, shell=True).decode().strip()
-                # Output: "TotalPhysicalMemory\n17112345678"
-                for line in result.splitlines():
-                    if line.strip().isdigit():
-                        ram_gb = round(int(line.strip()) / (1024**3), 1)
-                        break
-            else:
-                 # Linux fallback
-                with open('/proc/meminfo', 'r') as mem:
-                    for line in mem:
-                        if "MemTotal" in line:
-                            kb = int(line.split()[1])
-                            ram_gb = round(kb / (1024**2), 1)
-                            break
-        except Exception as e:
-            logger.warning(f"RAM detection failed: {e}")
-
-        # 3. GPU VRAM (Dedicated Video Memory)
-        vram_gb = 0.0
-        
-        # Enhanced GPU detection
-        gpu_name = "Integrated / Unknown"
-        
-        try:
-            if platform.system() == "Windows":
-                # Use WMIC/PowerShell on Windows
-                import subprocess
-                
-                # Get Name
-                cmd_name = "wmic path win32_VideoController get name"
-                name_result = subprocess.check_output(cmd_name, shell=True).decode().strip()
-                lines = [line.strip() for line in name_result.splitlines() if line.strip() and "Name" not in line]
-                if lines:
-                    gpu_name = ", ".join(lines)
-
-                # Get VRAM
-                # Note: Win32_VideoController AdapterRAM is a UInt32, capping at 4GB (4294967296 bytes).
-                # If we get exactly 4GB, it might be an overflow, but it's the best we can do without external deps.
-                cmd_vram = "wmic path Win32_VideoController get AdapterRAM"
-                try:
-                    vram_result = subprocess.check_output(cmd_vram, shell=True).decode().strip()
-                    vram_bytes = 0
-                    for line in vram_result.splitlines():
-                        if line.strip().isdigit():
-                            v = int(line.strip())
-                            if v > vram_bytes:
-                                vram_bytes = v
-                    
-                    if vram_bytes > 0:
-                        vram_gb = round(vram_bytes / (1024**3), 1)
-                        
-                        # Heuristic for 32-bit overflow (common on powerful cards like RX 7800 XT)
-                        # If exactly 4.0 GB and name indicates high-end, assume 8GB+ for recommendation safety
-                        if vram_gb == 4.0 and any(x in gpu_name.upper() for x in ["RX ", "RTX ", "GTX 1080", "GTX 1081", "XT"]):
-                             logger.info("VRAM capped at 4GB but high-end GPU detected. Treating as high VRAM.")
-                             vram_gb = 8.0 # Boost to safe threshold for large models
-                except Exception as ve:
-                    logger.warning(f"VRAM detection failed: {ve}")
-
-            elif platform.system() == "Linux":
-                # Use lspci on Linux
-                import subprocess
-                cmd = "lspci | grep -i vga"
-                result = subprocess.check_output(cmd, shell=True).decode().strip()
-                if result:
-                    # Extract name after colon
-                    parts = result.split(':')
-                    if len(parts) > 2:
-                        gpu_name = parts[-1].strip()
+                    # Filter logic: Prefer dedicated GPUs over 'Microsoft Basic' or 'Intel UHD' if multiple
+                    if gpus:
+                        best_gpu = gpus[0]
+                        for g in gpus:
+                            if "nvidia" in g.lower() or "amd" in g.lower() or "radeon" in g.lower() or "geforce" in g.lower():
+                                best_gpu = g
+                        self._hardware_info["gpu"] = best_gpu
                     else:
-                        gpu_name = result
-                
-                # Try to get VRAM via nvidia-smi if available
-                import shutil
-                if shutil.which("nvidia-smi"):
-                     try:
-                        cmd_vram = "nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits"
-                        v_out = subprocess.check_output(cmd_vram, shell=True).decode().strip()
-                        if v_out.isdigit():
-                            vram_gb = round(int(v_out) / 1024, 1) # nvidia-smi returns MiB
-                     except:
-                        pass
+                        self._hardware_info["gpu"] = "Unknown GPU"
 
+                    # VRAM (Max of all adapters)
+                    res = subprocess.check_output("wmic path Win32_VideoController get AdapterRAM /Value", shell=True, timeout=5).decode()
+                    max_vram = 0.0
+                    for line in res.splitlines():
+                        if "=" in line:
+                            try:
+                                bytes_val = int(line.split("=")[1].strip())
+                                # Filter out negative/overflow values sometimes returned by WMI
+                                if bytes_val > 0:
+                                    max_vram = max(max_vram, round(bytes_val / (1024**3), 1))
+                            except: pass
+                    self._hardware_info["vram"] = max_vram
+                except Exception as e:
+                   logger.warning(f"WMI GPU detection failed: {e}")
+                   self._hardware_info["gpu"] = "Detection Failed"
         except Exception as e:
-            logger.warning(f"GPU detection failed: {e}")
+            logger.error(f"Hardware detection crashed: {e}")
 
-        # Fallback to simple nvidia-smi check if still unknown
-        if gpu_name == "Integrated / Unknown":
-            import shutil
-            if shutil.which("nvidia-smi"):
-                gpu_name = "NVIDIA Tensor Core GPU (Detected)"
-        
-        # 4. CPU Threads Used (Display Total)
-        # Backend transcription_manager handles the 70% optimization internally.
-        total_cores = os.cpu_count() or 4
 
-        self._hardware_info = {
-            "cpu": cpu_name,
-            "gpu": gpu_name,
-            "os": f"{platform.system()} {platform.release()}",
-            "arch": platform.machine(),
-            "ram": ram_gb, # New
-            "vram": vram_gb, # New
-            "cores": cpu_cores, # New
-            "threads": total_cores # New
-        }
+    def get_hardware_info(self) -> Dict[str, Any]:
+        """Return cached info instantly."""
         return self._hardware_info
 
     def get_settings(self) -> Dict[str, Any]:

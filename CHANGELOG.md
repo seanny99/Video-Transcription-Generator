@@ -1,6 +1,109 @@
-# Changelog
+## [4.3.13] - 2026-01-25
 
-All notable changes to the **Video Transcription Generator** are documented here. This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+### 🕵️‍♂️ Deep Audit Fixes
+- **Fixed** Startup Hang: The "Reactive" port binding was failing to detect the port because Uvicorn outputs its startup logs to `stderr` (Standard Error), while the frontend was only listening to `stdout`. I've updated the logic to parse both streams, allowing the app to instantaneously detect the assigned port and launch the window.
+- **Updated** Branding: Incremented version to `v4.3.13`.
+
+---
+
+
+### 🐞 Startup Crash Fix
+- **Fixed** `[WinError 87] The parameter is incorrect`: Added robust error handling around `multiprocessing.freeze_support()`. This suppresses a crash that occurred in child processes spawned by third-party libraries (likely system info polling). The app now gracefully terminates these unnecessary child processes instead of showing a scary traceback.
+- **Improved** Process Policy: Enforced `workers=1` on the internal server to prevent any accidental process spawning.
+- **Updated** Branding: Incremented version to `v4.3.12`.
+
+---
+
+
+### 💣 Process Management Fix
+- **CRITICAL FIX**: Added `multiprocessing.freeze_support()` to the backend entry point. This prevents the compiled Windows executable from recursively spawning infinite copies of itself when the job queue worker starts. This was the root cause of the "so many ports open" issue where hundreds of backend instances would flood the system.
+- **Updated** Branding: Incremented version to `v4.3.11`.
+
+---
+
+
+### 📡 Reactive Port Binding
+- **Fixed** Startup Race Condition: Implemented a "Reactive Binding" strategy. Instead of Electron guessing a port, it now commands the Backend to find *any* available port (Port 0) and reports it back via stdout. Electron then dynamically connects to that specific port.
+- **Removed** Flaky Port Discovery: Deleted the `findPort` logic that caused "Address already in use" errors due to race conditions.
+- **Updated** Branding: Incremented version to `v4.3.10`.
+
+---
+
+
+### 🎲 Dynamic Port Allocation
+- **Fixed** "Address already in use" Error: Switched from fixed fallback ports (8081, 55666) to fully dynamic OS-assigned ephemeral ports (Port 0). This allows the application to find a guaranteed free port on every startup, even if previous zombie processes are still running.
+- **Improved** Process Isolation: Each application instance now runs on its own isolated port channel.
+- **Updated** Branding: Incremented version to `v4.3.9`.
+
+---
+
+
+### 🚀 Startup & Connection Resilience
+- **Fixed** Connection Race Condition: Implemented a "Smart Handshake" on startup. The frontend now waits for the backend to initialize (max 12s) before attempting to fetch data, preventing "Offline" errors on first load.
+- **Improved** Backend Readiness: Added automatic retries with exponential backoff for initial history and system spec loading.
+- **Updated** Branding: Incremented version to `v4.3.8`.
+
+---
+
+
+### 🕒 Timezone & UI Polish
+- **Fixed** Historical Timestamps: Standardized on Zulu (Z) ISO suffixes for all API responses, fixing the "8 hours ago" bug in the history panel.
+- **Removed** Redundant UI: Removed the version footer from the Settings Drawer as requested for a cleaner interface.
+- **Updated** Branding: Incremented version to `v4.3.7`.
+
+---
+
+
+### 🛠️ Ultimate Stability Pass
+- **Fixed** Startup Regression: Restored missing `set_processor` method in `JobQueue` that caused crashes on startup.
+- **Fixed** Hardware UI Hang: Refactored system hardware detection to run in a background thread. The "Hardware" section now loads instantly with partial info while detection continues in the background.
+- **Fixed** Job Queue Integrity: Restored the logic for clearing cancellation flags to prevent state corruption.
+
+---
+
+
+### 🛠️ Job Queue Resilience
+- **Fixed** PENDING Hang: Implemented a failure callback in the job queue to ensure that skipped or failed jobs are correctly updated in the database, preventing "ghost" pending states.
+- **Fixed** Stale Job Recovery: Hardened the transcript router to allow manual resume/restart of jobs that have been stuck in the `PENDING` state for too long.
+- **Fixed** Timezone Safety: Standardized on UTC for all internal staleness and progress checks.
+
+---
+
+
+### 🛠️ Production Bug Fixes
+- **Fixed** Media Deletion Crash: Resolved a `NameError` in the backend where the logger was not defined, causing 500 errors when deleting media.
+- **Fixed** Transcript Polling 404: Updated the frontend to use the correct media-based API route for transcript updates, fixing broken real-time progress indicators.
+- **Fixed** Hardware Detection Hang: Refactored system services to use non-blocking fallbacks for CPU/GPU detection, fixing the "Specifying..." hang in the Settings menu.
+- **Improved** System Robustness: Standardized logging across all API routers to improve production diagnostics.
+- **Updated** Branding: Standardized versioning to `v4.3.4` across all UI components.
+
+---
+
+
+### 💎 Final Release Polish
+- **Suppressed** Build Warnings: Explicitly excluded redundant submodules (`tensorboard`, legacy database drivers) to minimize build log noise.
+- **Fixed** OS Hardware Compatibility: Bundled `tbb` and `tzdata` to resolve high-priority warnings/deprecations on Windows systems.
+- **Verified** Production Stability: Successfully validated the AI engine (VAD/Whisper) in a fully packaged environment with standard health routing.
+
+---
+
+## [4.3.2] - 2026-01-24
+
+### 🛠️ Production Stability Fixes
+- **Fixed** VAD Model Error: Bundled missing `silero_vad_v6.onnx` model into the backend executable, fixing the "Transcription FAILED" error in production.
+- **Fixed** Health Route: Standardized `/api/health` endpoint to ensure the UI connection indicator works correctly in all environments.
+
+---
+
+## [4.3.0] - 2026-01-24
+
+### 🔍 Deployment Verification & Diagnostics
+- **Added** Server Health Indicator: Added a real-time "Backend Online/Offline" status pill in the History Sidebar for immediate connection feedback.
+- **Fixed** Port Synchronization: Hardware-locked the backend to strictly honor the port selected by Electron, fixing "Failed to fetch" errors caused by port mismatches.
+- **Improved** Backend Reliability: Significantly improved the error reporting and logging for the packaged backend executable.
+- **Added** Local Production Simulation: Created a specialized workflow for testing the bundled application behavior before shipping.
+- **Improved** Production Simulation: Updated Electron main process to correctly resolve backend paths and load built files when `NODE_ENV='production'` is set locally.
+- **Fixed** Backend Packaging: Added missing `aiosqlite` and async database drivers to the build script to prevent runtime module errors in the packaged executable.
 
 ---
 

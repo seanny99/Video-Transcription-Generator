@@ -131,8 +131,11 @@ class TranscriptionManager:
         logger.info(f"Starting transcription: {file_path}")
         
         # Transcription parameters optimized for accents and hallucination prevention
+        beam_size = 1 if "distil" in self._model_name.lower() else 5 # Distil models prefer greedy (1)
+        
         transcribe_options = {
-            "beam_size": 2,  # Optimized: 2 is significantly faster than 5 but prevents greedy loop issues
+            "beam_size": beam_size,
+            "best_of": 5 if beam_size > 1 else 1, # 'best_of' must be >= beam_size
             "vad_filter": True,  # Filter out silence/noise
             "vad_parameters": {
                 "min_silence_duration_ms": 500,  # Prevent hallucinations in long pauses
@@ -211,8 +214,12 @@ class TranscriptionManager:
         from utils.perf_logger import perf_logger
         perf_logger.start_phase(f"Inference (Offset {time_offset:.1f}s)")
         
+        
+        beam_size = 1 if "distil" in self._model_name.lower() else 5
+        
         transcribe_options = {
-            "beam_size": 2,
+            "beam_size": beam_size,
+            "best_of": 5 if beam_size > 1 else 1, # 'best_of' must be >= beam_size
             "vad_filter": True,
             "vad_parameters": {
                 "min_silence_duration_ms": 500,
@@ -238,4 +245,4 @@ class TranscriptionManager:
         perf_logger.end_phase(f"Inference (Offset {time_offset:.1f}s)", f"{len(segments)} segments")
         
         logger.info(f"Chunk transcribed: {len(segments)} segments")
-        return segments
+        return segments, info.language

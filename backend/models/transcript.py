@@ -14,6 +14,7 @@ class TranscriptionStatus(enum.Enum):
     """Status of a transcription job."""
     PENDING = "pending"
     PROCESSING = "processing"
+    DOWNLOADING = "downloading" # <--- New Status
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELED = "canceled"
@@ -31,6 +32,7 @@ class Transcript(Base):
     language = Column(String(10), default="en")
     duration_seconds = Column(Float, nullable=True)
     estimated_seconds = Column(Float, nullable=True)  # ETA for transcription
+    download_progress = Column(Float, default=0.0)    # <--- New Progress Field
     started_at = Column(DateTime, nullable=True)  # When processing started
     created_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)

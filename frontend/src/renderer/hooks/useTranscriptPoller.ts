@@ -10,17 +10,17 @@ export function useTranscriptPoller(
     const pollInterval = useRef<NodeJS.Timeout | null>(null);
 
     useEffect(() => {
-        // Only poll if we have a transcript that is pending or processing
-        if (!transcript || (transcript.status !== 'pending' && transcript.status !== 'processing')) {
+        // Only poll if we have a transcript that is pending, processing, OR downloading
+        if (!transcript || (transcript.status !== 'pending' && transcript.status !== 'processing' && transcript.status !== 'downloading')) {
             return;
         }
 
         const poll = async () => {
             try {
-                // Use getTranscriptStatus (lighter weight) or getTranscript (full data)
+                // Use getTranscriptStatus (lighter weight) or getTranscriptByMedia (full data)
                 // We likely need full data eventually, but status check is faster.
                 // Let's fetch full data if status changed, or just fetch full data to be simple.
-                const updated = await api.getTranscript(transcript.id);
+                const updated = await api.getTranscriptByMedia(transcript.media_id);
 
                 if (updated.status !== transcript.status || updated.segments.length !== (transcript.segments?.length || 0)) {
                     onUpdate(updated as TranscriptData);
